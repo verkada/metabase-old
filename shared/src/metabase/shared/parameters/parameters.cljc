@@ -93,12 +93,11 @@
     #"^past1days$"                         (trs "Yesterday")
     #"^next1days$"                         (trs "Tomorrow")
     #"^(past|next)([0-9]+)([a-z]+)~?$" :>> (fn [[prefix n interval]]
-                                             (let [prefix   (case prefix
-                                                              "past" (trs "Previous")
-                                                              "next" (trs "Next"))
-                                                   n        (when (not= n "1") n)
+                                             (let [n        (when (not= n "1") n)
                                                    interval (time-intervals interval (boolean n))]
-                                               (str prefix " " n " " interval)))))
+                                               (case prefix
+                                                 "past" (trs "Previous {0} {1}" n interval)
+                                                 "next" (trs "Next {0} {1}" n interval))))))
 
 (defmethod formatted-value :date/all-options
   [_ value locale]
@@ -117,7 +116,7 @@
   [values]
   (if (= (count values) 1)
     (str (first values))
-    (str (str/join ", " (butlast values)) (trs " and ") (last values))))
+    (trs "{0} and {1}" (str/join ", " (butlast values)) (last values))))
 
 (defmethod formatted-value :default
   [_ value _]
@@ -155,9 +154,9 @@
   "Normalize a single parameter by calling [[mbql.normalize/normalize-fragment]] on it, and converting all string keys
   to keywords."
   [parameter]
-  (->> (mbql.normalize/normalize-fragment [:parameters] [parameter])
-       first
-       (reduce-kv (fn [acc k v] (assoc acc (keyword k) v)) {})))
+  (-> (mbql.normalize/normalize-fragment [:parameters] [parameter])
+      first
+      (update-keys keyword)))
 
 (def ^:private template-tag-regex
   "A regex to find template tags in a text card on a dashboard. This should mirror the regex used to find template
@@ -183,8 +182,5 @@
    (when text
      (let [tag->param #?(:clj tag->param
                          :cljs (js->clj tag->param))
-           tag->normalized-param (reduce-kv (fn [acc tag param]
-                                              (assoc acc tag (normalize-parameter param)))
-                                            {}
-                                            tag->param)]
+           tag->normalized-param (update-vals tag->param normalize-parameter)]
        (str/replace text template-tag-regex (partial replacement tag->normalized-param locale))))))
