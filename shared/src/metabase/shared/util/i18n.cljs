@@ -1,7 +1,7 @@
 (ns metabase.shared.util.i18n
   (:require ["ttag" :as ttag]
             [clojure.string :as str]
-            [shadow.cljs.modern :refer [js-template]])
+            #_[shadow.cljs.modern :refer [js-template]])
   (:require-macros metabase.shared.util.i18n))
 
 (comment metabase.shared.util.i18n/keep-me

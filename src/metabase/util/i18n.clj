@@ -138,6 +138,10 @@
                          (pr-str (.toPattern message-format)) expected-num-args actual-num-args)
                  " Did you forget to escape a single quote?"))))
 
+(defmacro tru-pl
+  "Similar to `tru` but chooses the appropriate singular or plural form based on the value of `n`."
+  [])
+
 (defmacro deferred-tru
   "Similar to `tru` but creates a `UserLocalizedString` instance so that conversion to the correct locale can be delayed
   until it is needed. The user locale comes from the browser, so conversion to the localized string needs to be 'late

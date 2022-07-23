@@ -113,6 +113,7 @@
   (when-let [resource (locale-edn-resource a-locale)]
     (edn/read-string (slurp resource))))
 
+;; TODO: update docstring
 (def ^:private ^{:arglists '([locale-or-name])} translations
   "Fetch a map of original untranslated message format string -> translated message format string for `locale-or-name`
   by reading the corresponding EDN resource file. Does not include translations for parent locale(s). Memoized.
@@ -127,7 +128,15 @@
   (when (seq format-string)
     (when-let [locale (locale locale-or-name)]
       (when-let [translations (translations locale)]
-        (get translations format-string)))))
+        (first (get-in translations [:messages format-string]))))))
+
+(comment
+  (compute-plural "n%100==1 ? 0 : n%100==2 ? 1 : n%100==3 || n%100==4 ? 2 : 3;"
+                  105)
+  (compute-plural "n%100==1? 0 : 1" 101))
+
+(comment
+  (compute-plural "1 + 2" 5))
 
 (defn- translated-format-string
   "Find the translated version of `format-string` for `locale-or-name`, or `nil` if none can be found. Searches parent
