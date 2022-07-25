@@ -25,7 +25,7 @@ import ExplicitSize from "metabase/components/ExplicitSize";
 import Snippets from "metabase/entities/snippets";
 import SnippetCollections from "metabase/entities/snippet-collections";
 import SnippetModal from "metabase/query_builder/components/template_tags/SnippetModal";
-import SyncedParametersList from "metabase/parameters/components/SyncedParametersList/SyncedParametersList";
+//import SyncedParametersList from "metabase/parameters/components/SyncedParametersList/SyncedParametersList";
 import NativeQueryEditorSidebar from "./NativeQueryEditor/NativeQueryEditorSidebar";
 import VisibilityToggler from "./NativeQueryEditor/VisibilityToggler";
 import RightClickPopover from "./NativeQueryEditor/RightClickPopover";
@@ -38,7 +38,10 @@ import {
 } from "./NativeQueryEditor/utils";
 
 import "./NativeQueryEditor.css";
-import { NativeQueryEditorRoot } from "./NativeQueryEditor.styled";
+import {
+  NativeQueryEditorRoot,
+  StyledSyncedParametersList,
+} from "./NativeQueryEditor.styled";
 
 const AUTOCOMPLETE_DEBOUNCE_DURATION = 700;
 const AUTOCOMPLETE_CACHE_DURATION = AUTOCOMPLETE_DEBOUNCE_DURATION * 1.2; // tolerate 20%
@@ -430,8 +433,7 @@ class NativeQueryEditor extends Component {
               />
             </div>
             {hasParametersList && (
-              <SyncedParametersList
-                className="mt1 mx2"
+              <StyledSyncedParametersList
                 parameters={parameters}
                 setParameterValue={setParameterValue}
                 setParameterIndex={this.setParameterIndex}

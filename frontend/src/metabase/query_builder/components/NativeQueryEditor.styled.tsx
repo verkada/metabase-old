@@ -1,6 +1,9 @@
 import styled from "@emotion/styled";
 import { color } from "metabase/lib/colors";
 
+import SyncedParametersList from "metabase/parameters/components/SyncedParametersList/SyncedParametersList";
+import { breakpointMaxSmall } from "metabase/styled-components/theme";
+
 export const NativeQueryEditorRoot = styled.div`
   .ace_editor {
     height: 100%;
@@ -59,5 +62,22 @@ export const NativeQueryEditorRoot = styled.div`
 
   .ace_editor .ace_gutter {
     background-color: ${color("bg-light")};
+  }
+`;
+
+export const StyledSyncedParametersList = styled(SyncedParametersList)`
+  margin: 0.5rem 1rem 0 1rem;
+
+  ${breakpointMaxSmall} {
+    width: 100vw;
+    overflow-x: auto;
+    margin: 0.25rem 0 0;
+    padding: 0.25rem 0;
+    flex-wrap: nowrap;
+
+    fieldset {
+      margin-left: 1rem;
+      margin-top: 0.25rem;
+    }
   }
 `;
