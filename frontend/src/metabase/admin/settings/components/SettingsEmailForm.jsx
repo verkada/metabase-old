@@ -1,12 +1,10 @@
-import React, { Component } from "react";
+import { createRef, Fragment, Component } from "react";
 import PropTypes from "prop-types";
 import { connect } from "react-redux";
 import { t } from "ttag";
 
 import Button from "metabase/core/components/Button";
 import MarginHostingCTA from "metabase/admin/settings/components/widgets/MarginHostingCTA";
-
-import SettingsBatchForm from "./SettingsBatchForm";
 
 import * as MetabaseAnalytics from "metabase/lib/analytics";
 import MetabaseSettings from "metabase/lib/settings";
@@ -16,6 +14,7 @@ import {
   updateEmailSettings,
   clearEmailSettings,
 } from "../settings";
+import SettingsBatchForm from "./SettingsBatchForm";
 import { EmailFormRoot } from "./SettingsEmailForm.styled";
 
 const SEND_TEST_BUTTON_STATES = {
@@ -36,10 +35,16 @@ class SettingsEmailForm extends Component {
     clearEmailSettings: PropTypes.func.isRequired,
   };
 
+  constructor(props, context) {
+    super(props, context);
+
+    this.formRef = createRef();
+  }
+
   clearEmailSettings = async () => {
     await this.props.clearEmailSettings();
     // NOTE: reaching into form component is not ideal
-    this._form.setState({ formData: {}, dirty: false });
+    this.formRef.current.setState({ formData: {}, dirty: false });
   };
 
   sendTestEmail = async e => {
@@ -47,7 +52,7 @@ class SettingsEmailForm extends Component {
 
     this.setState({ sendingEmail: "working" });
     // NOTE: reaching into form component is not ideal
-    this._form.setFormErrors(null);
+    this.formRef.current.setFormErrors(null);
 
     try {
       await this.props.sendTestEmail();
@@ -68,7 +73,9 @@ class SettingsEmailForm extends Component {
       );
       this.setState({ sendingEmail: "default" });
       // NOTE: reaching into form component is not ideal
-      this._form.setFormErrors(this._form.handleFormErrors(error));
+      this.formRef.current.setFormErrors(
+        this.formRef.current.handleFormErrors(error),
+      );
     }
   };
 
@@ -79,16 +86,16 @@ class SettingsEmailForm extends Component {
     return (
       <EmailFormRoot>
         <SettingsBatchForm
-          ref={form => (this._form = form && form.getWrappedInstance())}
+          ref={this.formRef}
           {...this.props}
           elements={visibleElements}
           updateSettings={this.props.updateEmailSettings}
           disable={sendingEmail !== "default"}
           renderExtraButtons={({ disabled, valid, pristine, submitting }) => (
-            <React.Fragment>
+            <Fragment>
               {valid && pristine && submitting === "default" ? (
                 <Button
-                  mr={1}
+                  className="mr1"
                   success={sendingEmail === "success"}
                   disabled={disabled}
                   onClick={this.sendTestEmail}
@@ -97,13 +104,13 @@ class SettingsEmailForm extends Component {
                 </Button>
               ) : null}
               <Button
-                mr={1}
+                className="mr1"
                 disabled={disabled}
                 onClick={() => this.clearEmailSettings()}
               >
                 {t`Clear`}
               </Button>
-            </React.Fragment>
+            </Fragment>
           )}
         />
         {!MetabaseSettings.isHosted() && !MetabaseSettings.isEnterprise() && (

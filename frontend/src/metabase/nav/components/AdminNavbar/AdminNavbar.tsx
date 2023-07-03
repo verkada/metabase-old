@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { t } from "ttag";
 import MetabaseSettings from "metabase/lib/settings";
-import { AdminNavItem } from "./AdminNavItem";
-import StoreLink from "../StoreLink";
 import LogoIcon from "metabase/components/LogoIcon";
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
+import { User } from "metabase-types/api";
+import { AdminPath } from "metabase-types/store";
+import StoreLink from "../StoreLink";
 import {
   AdminExitLink,
   AdminLogoContainer,
@@ -16,8 +17,7 @@ import {
   AdminMobileNavBarItems,
   MobileHide,
 } from "./AdminNavbar.styled";
-import { User } from "metabase-types/api";
-import { AdminPath } from "metabase-types/store";
+import { AdminNavItem } from "./AdminNavItem";
 
 interface AdminNavbarProps {
   path: string;
@@ -30,7 +30,7 @@ export const AdminNavbar = ({
   adminPaths,
 }: AdminNavbarProps) => {
   return (
-    <AdminNavbarRoot className="Nav">
+    <AdminNavbarRoot className="Nav" aria-label={t`Navigation bar`}>
       <AdminLogoLink to="/admin" data-metabase-event="Navbar;Logo">
         <AdminLogoContainer>
           <LogoIcon className="text-brand my2" dark />
@@ -56,6 +56,7 @@ export const AdminNavbar = ({
         <AdminExitLink
           to="/"
           data-metabase-event="Navbar;Exit Admin"
+          data-testid="exit-admin"
         >{t`Exit admin`}</AdminExitLink>
       </MobileHide>
     </AdminNavbarRoot>
@@ -82,7 +83,7 @@ const MobileNavbar = ({ adminPaths, currentPath }: AdminMobileNavbarProps) => {
     <AdminMobileNavbar>
       <Icon
         name="burger"
-        size={20}
+        size={32}
         onClick={() => setMobileNavOpen(prev => !prev)}
       />
       {mobileNavOpen && (

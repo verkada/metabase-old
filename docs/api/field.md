@@ -8,20 +8,6 @@ summary: |
 
 API endpoints for Field.
 
-  - [DELETE /api/field/:id/dimension](#delete-apifieldiddimension)
-  - [GET /api/field/:id](#get-apifieldid)
-  - [GET /api/field/:id/related](#get-apifieldidrelated)
-  - [GET /api/field/:id/remapping/:remapped-id](#get-apifieldidremappingremapped-id)
-  - [GET /api/field/:id/search/:search-id](#get-apifieldidsearchsearch-id)
-  - [GET /api/field/:id/summary](#get-apifieldidsummary)
-  - [GET /api/field/:id/values](#get-apifieldidvalues)
-  - [GET /api/field/field%2C:field-name%2C:options/values](#get-apifieldfield2cfield-name2coptionsvalues)
-  - [POST /api/field/:id/dimension](#post-apifieldiddimension)
-  - [POST /api/field/:id/discard_values](#post-apifieldiddiscard_values)
-  - [POST /api/field/:id/rescan_values](#post-apifieldidrescan_values)
-  - [POST /api/field/:id/values](#post-apifieldidvalues)
-  - [PUT /api/field/:id](#put-apifieldid)
-
 ## `DELETE /api/field/:id/dimension`
 
 Remove the dimension associated to field at ID.
@@ -36,7 +22,9 @@ Get `Field` with ID.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** 
+
+*  **`include_editable_data_model`**
 
 ## `GET /api/field/:id/related`
 
@@ -86,7 +74,7 @@ If a Field's value of `has_field_values` is `:list`, return a list of all the di
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `GET /api/field/field%2C:field-name%2C:options/values`
 
@@ -168,7 +156,9 @@ Update `Field` with ID.
 
 *  **`nfc_path`** value may be nil, or if non-nil, value must be an array. Each value must be a non-blank string.
 
-*  **`id`**
+*  **`id`** 
+
+*  **`json_unfolding`** value may be nil, or if non-nil, value must be a boolean.
 
 ---
 

@@ -1,18 +1,16 @@
 /* eslint "react/prop-types": "error" */
 
-import React from "react";
 import PropTypes from "prop-types";
 import cx from "classnames";
 import { connect } from "react-redux";
 import _ from "underscore";
 import { t, ngettext, msgid } from "ttag";
 
-import Card from "metabase/components/Card";
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import Label from "metabase/components/type/Label";
 import Subhead from "metabase/components/type/Subhead";
 import Sidebar from "metabase/dashboard/components/Sidebar";
-import Tooltip from "metabase/components/Tooltip";
+import Tooltip from "metabase/core/components/Tooltip";
 
 import {
   formatDateTimeWithUnit,
@@ -22,7 +20,7 @@ import { formatFrame } from "metabase/lib/time";
 import { getActivePulseParameters } from "metabase/lib/pulse";
 
 import { getParameters } from "metabase/dashboard/selectors";
-import { SidebarActions } from "./PulsesListSidebar.styled";
+import { PulseCard, SidebarActions } from "./PulsesListSidebar.styled";
 
 const mapStateToProps = (state, props) => {
   return {
@@ -69,13 +67,10 @@ function _PulsesListSidebar({
           const canEdit = canEditPulse(pulse, formInput);
 
           return (
-            <Card
+            <PulseCard
               key={pulse.id}
               flat
-              className={cx("mb3", {
-                "cursor-pointer": canEdit,
-                "bg-brand-hover": canEdit,
-              })}
+              canEdit={canEdit}
               onClick={() =>
                 canEdit && editPulse(pulse, pulse.channels[0].channel_type)
               }
@@ -102,7 +97,7 @@ function _PulsesListSidebar({
                 </div>
                 <PulseDetails pulse={pulse} parameters={parameters} />
               </div>
-            </Card>
+            </PulseCard>
           );
         })}
       </div>

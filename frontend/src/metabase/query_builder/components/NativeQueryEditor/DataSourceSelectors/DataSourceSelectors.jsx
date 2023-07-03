@@ -1,6 +1,8 @@
-import React from "react";
+import { useMemo } from "react";
 import PropTypes from "prop-types";
 import { t } from "ttag";
+
+import { getNativeQueryLanguage } from "metabase/lib/engine";
 
 import {
   DatabaseDataSelector,
@@ -8,11 +10,12 @@ import {
 } from "metabase/query_builder/components/DataSelector";
 
 const DataSourceSelectorsPropTypes = {
-  isNativeEditorOpen: PropTypes.bool.isRequired,
+  isNativeEditorOpen: PropTypes.bool,
   query: PropTypes.object,
   readOnly: PropTypes.bool,
   setDatabaseId: PropTypes.func,
   setTableId: PropTypes.func,
+  editorContext: PropTypes.oneOf(["action", "question"]),
 };
 
 const PopulatedDataSourceSelectorsPropTypes = {
@@ -45,6 +48,7 @@ const TableSelectorPropTypes = {
 
 const PlaceholderPropTypes = {
   query: PropTypes.object,
+  editorContext: PropTypes.oneOf(["action", "question"]),
 };
 
 const DataSourceSelectors = ({
@@ -53,16 +57,33 @@ const DataSourceSelectors = ({
   readOnly,
   setDatabaseId,
   setTableId,
+  editorContext,
 }) => {
   const database = query.database();
-  const databases = query.metadata().databasesList({ savedQuestions: false });
 
-  if (!isNativeEditorOpen || databases.length === 0) {
-    return <Placeholder query={query} />;
+  const databases = useMemo(() => {
+    const allDatabases = query
+      .metadata()
+      .databasesList({ savedQuestions: false });
+
+    if (editorContext === "action") {
+      return allDatabases.filter(database => database.hasActionsEnabled());
+    }
+
+    return allDatabases;
+  }, [query, editorContext]);
+
+  if (
+    !isNativeEditorOpen ||
+    databases.length === 0 ||
+    (!database && readOnly)
+  ) {
+    return <Placeholder query={query} editorContext={editorContext} />;
   }
 
   return (
     <PopulatedDataSourceSelectors
+      isNativeEditorOpen={isNativeEditorOpen}
       database={database}
       databases={databases}
       query={query}
@@ -162,11 +183,18 @@ const TableSelector = ({ database, readOnly, selectedTable, setTableId }) => (
 
 TableSelector.propTypes = TableSelectorPropTypes;
 
-const Placeholder = ({ query }) => (
-  <div className="ml2 p2 text-medium">
-    {t`This question is written in ${query.nativeQueryLanguage()}.`}
-  </div>
-);
+const Placeholder = ({ query, editorContext }) => {
+  if (editorContext === "action") {
+    return null;
+  }
+
+  const language = getNativeQueryLanguage(query.engine());
+  return (
+    <div className="ml2 p2 text-medium">
+      {t`This question is written in ${language}.`}
+    </div>
+  );
+};
 
 Placeholder.propTypes = PlaceholderPropTypes;
 

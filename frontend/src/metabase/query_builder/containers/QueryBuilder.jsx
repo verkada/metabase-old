@@ -1,23 +1,18 @@
 /* eslint-disable react/prop-types */
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connect } from "react-redux";
 import { push } from "react-router-redux";
 import { t } from "ttag";
 import _ from "underscore";
 
+import { useMount, useUnmount, usePrevious } from "react-use";
 import { PLUGIN_SELECTORS } from "metabase/plugins";
 import Bookmark from "metabase/entities/bookmarks";
 import Collections from "metabase/entities/collections";
 import Timelines from "metabase/entities/timelines";
+import { getSetting } from "metabase/selectors/settings";
 
 import { closeNavbar, getIsNavbarOpen } from "metabase/redux/app";
-import { MetabaseApi } from "metabase/services";
 import { getMetadata } from "metabase/selectors/metadata";
 import {
   getUser,
@@ -26,9 +21,7 @@ import {
 } from "metabase/selectors/user";
 
 import { useForceUpdate } from "metabase/hooks/use-force-update";
-import { useOnMount } from "metabase/hooks/use-on-mount";
-import { useOnUnmount } from "metabase/hooks/use-on-unmount";
-import { usePrevious } from "metabase/hooks/use-previous";
+
 import { useLoadingTimer } from "metabase/hooks/use-loading-timer";
 import { useWebNotification } from "metabase/hooks/use-web-notification";
 
@@ -36,11 +29,13 @@ import title from "metabase/hoc/Title";
 import titleWithLoadingTime from "metabase/hoc/TitleWithLoadingTime";
 import favicon from "metabase/hoc/Favicon";
 
+import useBeforeUnload from "metabase/hooks/use-before-unload";
 import View from "../components/view/View";
 
 import {
   getCard,
   getDatabasesList,
+  getDataReferenceStack,
   getOriginalCard,
   getLastRunCard,
   getFirstQueryResult,
@@ -50,7 +45,6 @@ import {
   getIsNew,
   getIsObjectDetail,
   getTables,
-  getTableMetadata,
   getTableForeignKeys,
   getTableForeignKeyReferences,
   getUiControls,
@@ -66,7 +60,6 @@ import {
   getQuery,
   getQuestion,
   getOriginalQuestion,
-  getSettings,
   getQueryStartTime,
   getRawSeries,
   getQuestionAlerts,
@@ -77,8 +70,8 @@ import {
   getNativeEditorCursorOffset,
   getNativeEditorSelectedText,
   getIsBookmarked,
-  getVisibleTimelineIds,
   getVisibleTimelineEvents,
+  getVisibleTimelineEventIds,
   getSelectedTimelineEventIds,
   getFilteredTimelines,
   getTimeseriesXDomain,
@@ -90,21 +83,12 @@ import {
   getIsHeaderVisible,
   getIsActionListVisible,
   getIsAdditionalInfoVisible,
+  getAutocompleteResultsFn,
+  getCardAutocompleteResultsFn,
+  isResultsMetadataDirty,
 } from "../selectors";
 import * as actions from "../actions";
-
-function autocompleteResults(card, prefix) {
-  const databaseId = card && card.dataset_query && card.dataset_query.database;
-  if (!databaseId) {
-    return [];
-  }
-
-  const apiCall = MetabaseApi.db_autocomplete_suggestions({
-    dbId: databaseId,
-    prefix: prefix,
-  });
-  return apiCall;
-}
+import { VISUALIZATION_SLOW_TIMEOUT } from "../constants";
 
 const timelineProps = {
   query: { include: "events" },
@@ -116,7 +100,7 @@ const mapStateToProps = (state, props) => {
     user: getUser(state, props),
     canManageSubscriptions: canManageSubscriptions(state, props),
     isAdmin: getUserIsAdmin(state, props),
-    fromUrl: props.location.query.from,
+    fromUrl: props.location.query?.from,
 
     mode: getMode(state),
 
@@ -134,15 +118,14 @@ const mapStateToProps = (state, props) => {
     databases: getDatabasesList(state),
     nativeDatabases: getNativeDatabases(state),
     tables: getTables(state),
-    tableMetadata: getTableMetadata(state),
 
     query: getQuery(state),
     metadata: getMetadata(state),
 
     timelines: getFilteredTimelines(state),
     timelineEvents: getVisibleTimelineEvents(state),
-    visibleTimelineIds: getVisibleTimelineIds(state),
     selectedTimelineEventIds: getSelectedTimelineEventIds(state),
+    visibleTimelineEventIds: getVisibleTimelineEventIds(state),
     xDomain: getTimeseriesXDomain(state),
 
     result: getFirstQueryResult(state),
@@ -151,6 +134,7 @@ const mapStateToProps = (state, props) => {
 
     uiControls: getUiControls(state),
     ...state.qb.uiControls,
+    dataReferenceStack: getDataReferenceStack(state),
     isAnySidebarOpen: getIsAnySidebarOpen(state),
 
     isBookmarked: getIsBookmarked(state, props),
@@ -172,12 +156,13 @@ const mapStateToProps = (state, props) => {
 
     isRunnable: getIsRunnable(state),
     isResultDirty: getIsResultDirty(state),
+    isMetadataDirty: isResultsMetadataDirty(state),
 
     questionAlerts: getQuestionAlerts(state),
     visualizationSettings: getVisualizationSettings(state),
 
-    autocompleteResultsFn: prefix => autocompleteResults(state.qb.card, prefix),
-    instanceSettings: getSettings(state),
+    autocompleteResultsFn: getAutocompleteResultsFn(state),
+    cardAutocompleteResultsFn: getCardAutocompleteResultsFn(state),
 
     initialCollectionId: Collections.selectors.getInitialCollectionId(
       state,
@@ -192,6 +177,8 @@ const mapStateToProps = (state, props) => {
     pageFavicon: getPageFavicon(state),
     isLoadingComplete: getIsLoadingComplete(state),
     loadingMessage: PLUGIN_SELECTORS.getLoadingMessage(state),
+
+    reportTimezone: getSetting(state, "report-timezone-long"),
   };
 };
 
@@ -216,7 +203,6 @@ function QueryBuilder(props) {
     initializeQB,
     apiCreateQuestion,
     apiUpdateQuestion,
-    updateQuestion,
     updateUrl,
     locationChanged,
     onChangeLocation,
@@ -229,6 +215,10 @@ function QueryBuilder(props) {
     showTimelinesForCollection,
     card,
     isLoadingComplete,
+    isDirty: isModelQueryDirty,
+    isMetadataDirty,
+    closeQB,
+    isNew,
   } = props;
 
   const forceUpdate = useForceUpdate();
@@ -277,20 +267,20 @@ function QueryBuilder(props) {
   };
 
   const handleCreate = useCallback(
-    async card => {
-      const questionWithUpdatedCard = question.setCard(card);
-      await apiCreateQuestion(questionWithUpdatedCard);
+    async newQuestion => {
+      const shouldBePinned = newQuestion.isDataset();
+      await apiCreateQuestion(newQuestion.setPinned(shouldBePinned));
+
       setRecentlySaved("created");
     },
-    [question, apiCreateQuestion, setRecentlySaved],
+    [apiCreateQuestion, setRecentlySaved],
   );
 
   const handleSave = useCallback(
-    async (card, { rerunQuery = false } = {}) => {
-      const questionWithUpdatedCard = question.setCard(card);
-      await apiUpdateQuestion(questionWithUpdatedCard, { rerunQuery });
+    async (updatedQuestion, { rerunQuery } = {}) => {
+      await apiUpdateQuestion(updatedQuestion, { rerunQuery });
       if (!rerunQuery) {
-        await updateUrl(questionWithUpdatedCard.card(), { dirty: false });
+        await updateUrl(updatedQuestion, { dirty: false });
       }
       if (fromUrl) {
         onChangeLocation(fromUrl);
@@ -298,28 +288,34 @@ function QueryBuilder(props) {
         setRecentlySaved("updated");
       }
     },
-    [
-      question,
-      fromUrl,
-      apiUpdateQuestion,
-      updateUrl,
-      onChangeLocation,
-      setRecentlySaved,
-    ],
+    [fromUrl, apiUpdateQuestion, updateUrl, onChangeLocation, setRecentlySaved],
   );
 
-  useOnMount(() => {
+  useMount(() => {
     initializeQB(location, params);
-  }, []);
+  });
 
-  useOnMount(() => {
+  useEffect(() => {
     window.addEventListener("resize", forceUpdateDebounced);
     return () => window.removeEventListener("resize", forceUpdateDebounced);
-  }, []);
+  });
 
-  useOnUnmount(() => {
+  const isExistingModelDirty = useMemo(
+    () => isModelQueryDirty || isMetadataDirty,
+    [isMetadataDirty, isModelQueryDirty],
+  );
+
+  const isExistingSqlQueryDirty = useMemo(
+    () => isModelQueryDirty && isNativeEditorOpen,
+    [isModelQueryDirty, isNativeEditorOpen],
+  );
+
+  useBeforeUnload(!isNew && (isExistingModelDirty || isExistingSqlQueryDirty));
+
+  useUnmount(() => {
     cancelQuery();
     closeModal();
+    closeQB();
     clearTimeout(timeout.current);
   });
 
@@ -367,12 +363,6 @@ function QueryBuilder(props) {
     }
   }, [location, params, previousLocation, locationChanged]);
 
-  useEffect(() => {
-    if (question) {
-      question._update = updateQuestion;
-    }
-  });
-
   const [isShowingToaster, setIsShowingToaster] = useState(false);
 
   const { isRunning } = uiControls;
@@ -384,7 +374,7 @@ function QueryBuilder(props) {
   }, []);
 
   useLoadingTimer(isRunning, {
-    timer: 15000,
+    timer: VISUALIZATION_SLOW_TIMEOUT,
     onTimeout,
   });
 

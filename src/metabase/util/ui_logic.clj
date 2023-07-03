@@ -2,6 +2,8 @@
   "This namespace has clojure implementations of logic currently found in the UI, but is needed for the
   backend. Idealling code here would be refactored such that the logic for this isn't needed in two places")
 
+(set! *warn-on-reflection* true)
+
 (defn- dimension-column?
   "A dimension column is any non-aggregation column"
   [col]
@@ -90,10 +92,10 @@
   (let [metrics     (some-> card
                             (get-in [:visualization_settings :graph.metrics]))
         col-indices (map #(column-name->index % results) metrics)]
-    (when (seq? col-indices)
+    (when (seq col-indices)
       (fn [row]
         (let [res (vec (for [idx col-indices]
-                         (get row idx)))]
+                         (nth row idx)))]
           (if (every? some? res)
             res
             nil))))))
@@ -105,10 +107,10 @@
   (let [dimensions  (some-> card
                             (get-in [:visualization_settings :graph.dimensions]))
         col-indices (map #(column-name->index % results) dimensions)]
-    (when (seq? col-indices)
+    (when (seq col-indices)
       (fn [row]
         (let [res (vec (for [idx col-indices]
-                         (get row idx)))]
+                         (nth row idx)))]
           (if (every? some? res)
             res
             nil))))))

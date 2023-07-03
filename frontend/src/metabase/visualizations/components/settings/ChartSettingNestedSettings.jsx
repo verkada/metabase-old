@@ -1,16 +1,19 @@
 /* eslint-disable react/prop-types */
-import React from "react";
-
-import ChartSettingsWidget from "../ChartSettingsWidget";
+/* eslint-disable react/display-name */
+import { Component } from "react";
 
 import _ from "underscore";
 
 import { updateSettings } from "metabase/visualizations/lib/settings";
+import ChartSettingsWidget from "../ChartSettingsWidget";
 
+/**
+ * @deprecated HOCs are deprecated
+ */
 const chartSettingNestedSettings =
   ({ getObjectKey, getSettingsWidgetsForObject }) =>
   ComposedComponent =>
-    class extends React.Component {
+    class extends Component {
       constructor(props) {
         super(props);
         this.state = {};
@@ -19,10 +22,10 @@ const chartSettingNestedSettings =
       getEditingObjectKey = () => {
         return (
           this.state.objectKeyOverride ||
-          this.props.initialKey ||
-          (this.props.objects.length === 1
-            ? getObjectKey(this.props.objects[0])
-            : null)
+          (this.props.initialKey ??
+            (this.props.objects.length === 1
+              ? getObjectKey(this.props.objects[0])
+              : null))
         );
       };
 
@@ -40,7 +43,7 @@ const chartSettingNestedSettings =
 
       handleChangeSettingsForEditingObject = newSettings => {
         const editingObjectKey = this.getEditingObjectKey();
-        if (editingObjectKey) {
+        if (editingObjectKey != null) {
           this.handleChangeSettingsForObjectKey(editingObjectKey, newSettings);
         }
       };
@@ -66,7 +69,7 @@ const chartSettingNestedSettings =
       render() {
         const { series, objects, extra } = this.props;
         const editingObjectKey = this.getEditingObjectKey();
-        if (editingObjectKey) {
+        if (editingObjectKey !== undefined) {
           const editingObject = _.find(
             objects,
             o => getObjectKey(o) === editingObjectKey,

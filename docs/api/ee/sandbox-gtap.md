@@ -8,23 +8,23 @@ summary: |
 
 `/api/mt/gtap` endpoints, for CRUD operations and the like on GTAPs (Group Table Access Policies).
 
-  - [DELETE /api/mt/gtap/:id](#delete-apimtgtapid)
-  - [GET /api/mt/gtap/](#get-apimtgtap)
-  - [GET /api/mt/gtap/:id](#get-apimtgtapid)
-  - [POST /api/mt/gtap/](#post-apimtgtap)
-  - [PUT /api/mt/gtap/:id](#put-apimtgtapid)
-
 ## `DELETE /api/mt/gtap/:id`
 
 Delete a GTAP entry.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `GET /api/mt/gtap/`
 
-Fetch a list of all the GTAPs currently in use.
+Fetch a list of all GTAPs currently in use, or a single GTAP if both `group_id` and `table_id` are provided.
+
+### PARAMS:
+
+*  **`group_id`** nullable value must be an integer greater than zero.
+
+*  **`table_id`** nullable value must be an integer greater than zero.
 
 ## `GET /api/mt/gtap/:id`
 
@@ -32,7 +32,7 @@ Fetch GTAP by `id`.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `POST /api/mt/gtap/`
 
@@ -47,6 +47,17 @@ Create a new GTAP.
 *  **`group_id`** value must be an integer greater than zero.
 
 *  **`attribute_remappings`**
+
+## `POST /api/mt/gtap/validate`
+
+Validate a sandbox which may not have yet been saved. This runs the same validation that is performed when the
+  sandbox is saved, but doesn't actually save the sandbox.
+
+### PARAMS:
+
+*  **`table_id`** value must be an integer greater than zero.
+
+*  **`card_id`** nullable value must be an integer greater than zero.
 
 ## `PUT /api/mt/gtap/:id`
 

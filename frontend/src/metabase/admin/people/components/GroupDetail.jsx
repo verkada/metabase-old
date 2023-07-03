@@ -1,8 +1,7 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { connect } from "react-redux";
 import { t, ngettext, msgid } from "ttag";
-import _ from "underscore";
 
 import {
   isAdminGroup,
@@ -14,16 +13,16 @@ import {
 import { PLUGIN_GROUP_MANAGERS } from "metabase/plugins";
 import Alert from "metabase/components/Alert";
 import AdminPaneLayout from "metabase/components/AdminPaneLayout";
-import { getGroupMembersips, getMembershipsByUser } from "../selectors";
 import { getUser } from "metabase/selectors/user";
-import GroupMembersTable from "./GroupMembersTable";
+import { useConfirmation } from "metabase/hooks/use-confirmation";
+import { getGroupMembersips, getMembershipsByUser } from "../selectors";
 import {
   createMembership,
   deleteMembership,
   updateMembership,
   loadMemberships,
 } from "../people";
-import { useConfirmation } from "metabase/hooks/use-confirmation";
+import GroupMembersTable from "./GroupMembersTable";
 
 const GroupDescription = ({ group }) =>
   isDefaultGroup(group) ? (
@@ -157,7 +156,7 @@ const GroupDetail = ({
   return (
     <AdminPaneLayout
       title={
-        <React.Fragment>
+        <Fragment>
           {getGroupNameLocalized(group ?? {})}
           <span className="text-light ml1">
             {ngettext(
@@ -166,7 +165,7 @@ const GroupDetail = ({
               groupMemberships.length,
             )}
           </span>
-        </React.Fragment>
+        </Fragment>
       }
       buttonText={t`Add members`}
       buttonAction={canEditMembership(group) ? onAddUsersClicked : null}

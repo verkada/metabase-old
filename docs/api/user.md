@@ -8,17 +8,6 @@ summary: |
 
 /api/user endpoints.
 
-  - [DELETE /api/user/:id](#delete-apiuserid)
-  - [GET /api/user/](#get-apiuser)
-  - [GET /api/user/:id](#get-apiuserid)
-  - [GET /api/user/current](#get-apiusercurrent)
-  - [POST /api/user/](#post-apiuser)
-  - [POST /api/user/:id/send_invite](#post-apiuseridsend_invite)
-  - [PUT /api/user/:id](#put-apiuserid)
-  - [PUT /api/user/:id/modal/:modal](#put-apiuseridmodalmodal)
-  - [PUT /api/user/:id/password](#put-apiuseridpassword)
-  - [PUT /api/user/:id/reactivate](#put-apiuseridreactivate)
-
 ## `DELETE /api/user/:id`
 
 Disable a `User`.  This does not remove the `User` from the DB, but instead disables their account.
@@ -68,6 +57,14 @@ Fetch a `User`. You must be fetching yourself *or* be a superuser *or* a Group M
 
 Fetch the current `User`.
 
+## `GET /api/user/recipients`
+
+Fetch a list of `Users`. Returns only active users. Meant for non-admins unlike GET /api/user.
+
+   - If user-visibility is :all or the user is an admin, include all users.
+   - If user-visibility is :group, include only users in the same group (excluding the all users group).
+   - If user-visibility is :none or the user is sandboxed, include only themselves.
+
 ## `POST /api/user/`
 
 Create a new `User`, return a 400 if the email address is already taken.
@@ -82,7 +79,10 @@ You must be a superuser to do this.
 
 *  **`email`** value must be a valid email address.
 
-*  **`user_group_memberships`** value may be nil, or if non-nil, value must be an array.
+*  **`user_group_memberships`** value may be nil, or if non-nil, value must be an array. Each value must be a map with schema: (
+  is_group_manager (optional) : value must be a boolean.
+  id : value must be an integer greater than zero.
+)
 
 *  **`login_attributes`** value may be nil, or if non-nil, login attribute keys must be a keyword or string
 
@@ -94,7 +94,7 @@ You must be a superuser to do this.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `PUT /api/user/:id`
 
@@ -112,7 +112,10 @@ Update an existing, active `User`.
 
 *  **`locale`** value may be nil, or if non-nil, String must be a valid two-letter ISO language or language-country code e.g. en or en_US.
 
-*  **`user_group_memberships`** value may be nil, or if non-nil, value must be an array.
+*  **`user_group_memberships`** value may be nil, or if non-nil, value must be an array. Each value must be a map with schema: (
+  is_group_manager (optional) : value must be a boolean.
+  id : value must be an integer greater than zero.
+)
 
 *  **`id`** 
 
@@ -142,7 +145,9 @@ Update a user's password.
 
 *  **`password`** password is too common.
 
-*  **`old_password`**
+*  **`old_password`** 
+
+*  **`request`**
 
 ## `PUT /api/user/:id/reactivate`
 

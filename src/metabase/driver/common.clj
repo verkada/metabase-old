@@ -1,21 +1,25 @@
 (ns metabase.driver.common
   "Shared definitions and helper functions for use across different drivers."
-  (:require [clj-time.coerce :as time.coerce]
-            [clj-time.core :as time]
-            [clj-time.format :as time.format]
-            [clojure.string :as str]
-            [clojure.tools.logging :as log]
-            [metabase.driver :as driver]
-            [metabase.models.setting :as setting]
-            [metabase.public-settings :as public-settings]
-            [metabase.query-processor.context.default :as context.default]
-            [metabase.query-processor.store :as qp.store]
-            [metabase.util :as u]
-            [metabase.util.i18n :refer [deferred-tru trs tru]]
-            [schema.core :as s])
-  (:import java.text.SimpleDateFormat
-           org.joda.time.DateTime
-           org.joda.time.format.DateTimeFormatter))
+  (:require
+   [clj-time.coerce :as time.coerce]
+   [clj-time.core :as time]
+   [clj-time.format :as time.format]
+   [clojure.string :as str]
+   [metabase.driver :as driver]
+   [metabase.models.setting :as setting]
+   [metabase.public-settings :as public-settings]
+   [metabase.query-processor.context.default :as context.default]
+   [metabase.query-processor.store :as qp.store]
+   [metabase.util :as u]
+   [metabase.util.i18n :refer [deferred-tru trs tru]]
+   [metabase.util.log :as log]
+   [schema.core :as s])
+  (:import
+   (java.text SimpleDateFormat)
+   (org.joda.time DateTime)
+   (org.joda.time.format DateTimeFormatter)))
+
+(set! *warn-on-reflection* true)
 
 ;; TODO - we should rename these from `default-*-details` to `default-*-connection-property`
 
@@ -170,12 +174,13 @@
 (def json-unfolding
   "Map representing the `json-unfolding` option in a DB connection form"
   {:name         "json-unfolding"
-   :display-name (deferred-tru "Unfold JSON Columns")
+   :display-name (deferred-tru "Allow unfolding of JSON columns")
    :type         :boolean
    :visible-if   {"advanced-options" true}
    :description  (deferred-tru
-                   (str "We unfold JSON columns into component fields."
-                        "This is on by default but you can turn it off if performance is slow."))
+                   (str "This enables unfolding JSON columns into their component fields. "
+                        "Disable unfolding if performance is slow. If enabled, you can still disable unfolding for "
+                        "individual fields in their settings."))
    :default      true})
 
 (def refingerprint
@@ -260,7 +265,7 @@
       (time/to-time-zone (time.coerce/from-date parsed-date) joda-tz))))
 
 (defn ^:deprecated create-db-time-formatters
-  "Creates date formatters from `DATE-FORMAT-STR` that will preserve the offset/timezone information. Will return a
+  "Creates date formatters from `date-format-str` that will preserve the offset/timezone information. Will return a
   JodaTime date formatter and a core Java SimpleDateFormat. Results of this are threadsafe and can safely be def'd."
   [date-format-str]
   [(.withOffsetParsed ^DateTimeFormatter (time.format/formatter date-format-str))
@@ -275,22 +280,22 @@
         (parse formatter time-str))))
 
 (defmulti ^:deprecated current-db-time-native-query
-  "Return a native query that will fetch the current time (presumably as a string) used by the `current-db-time`
+  "Return a native query that will fetch the current time (presumably as a string) used by the [[current-db-time]]
   implementation below.
 
-  DEPRECATED — `metabase.driver/current-db-time`, the method this function provides an implementation for, is itself
-  deprecated. Implement `metabase.driver/db-default-timezone` instead directly."
+  DEPRECATED — [[metabase.driver/current-db-time]], the method this function provides an implementation for, is itself
+  deprecated. Implement [[metabase.driver/db-default-timezone]] instead directly."
   {:arglists '([driver])}
   driver/dispatch-on-initialized-driver
   :hierarchy #'driver/hierarchy)
 
 (defmulti ^:deprecated current-db-time-date-formatters
-  "Return JODA time date formatters to parse the current time returned by `current-db-time-native-query`. Used by
-  `current-db-time` implementation below. You can use `create-db-time-formatters` provided by this namespace to create
+  "Return JODA time date formatters to parse the current time returned by [[current-db-time-native-query`]] Used by
+  `current-db-time` implementation below. You can use [[create-db-time-formatters]] provided by this namespace to create
   formatters for a date format string.
 
-  DEPRECATED — `metabase.driver/current-db-time`, the method this function provides an implementation for, is itself
-  deprecated. Implement `metabase.driver/db-default-timezone` instead directly."
+  DEPRECATED — [[metabase.driver/current-db-time]], the method this function provides an implementation for, is itself
+  deprecated. Implement [[metabase.driver/db-default-timezone]] instead directly."
   {:arglists '([driver])}
   driver/dispatch-on-initialized-driver
   :hierarchy #'driver/hierarchy)
@@ -309,8 +314,8 @@
     (let [native-query    (current-db-time-native-query driver)
           date-formatters (current-db-time-date-formatters driver)
           time-str        (try
-                            ;; need to initialize the store since we're calling `execute-reducible-query` directly
-                            ;; instead of going thru normal QP pipeline
+                            ;; need to initialize the store since we're calling [[driver/execute-reducible-query]]
+                            ;; directly instead of going thru normal QP pipeline
                             (qp.store/with-store
                               (qp.store/fetch-and-store-database! (u/the-id database))
                               (let [query {:database (u/the-id database), :native {:query native-query}}
@@ -409,13 +414,19 @@
 (def ^:private ^clojure.lang.PersistentVector days-of-week
   [:monday :tuesday :wednesday :thursday :friday :saturday :sunday])
 
+(def ^:dynamic *start-of-week*
+  "Used to override the [[metabase.public-settings/start-of-week]] settings.
+  Primarily being used to calculate week-of-year in US modes where the start-of-week is always Sunday.
+  More in (defmethod date [:sql :week-of-year-us])."
+  nil)
+
 (s/defn start-of-week->int :- (s/pred (fn [n] (and (integer? n) (<= 0 n 6)))
                                       "Start of week integer")
   "Returns the int value for the current [[metabase.public-settings/start-of-week]] Setting value, which ranges from
   `0` (`:monday`) to `6` (`:sunday`). This is guaranteed to return a value."
   {:added "0.42.0"}
   []
-  (.indexOf days-of-week (setting/get-value-of-type :keyword :start-of-week)))
+  (.indexOf days-of-week (or *start-of-week* (setting/get-value-of-type :keyword :start-of-week))))
 
 (defn start-of-week-offset-for-day
   "Like [[start-of-week-offset]] but takes a `start-of-week` keyword like `:sunday` rather than ` driver`. Returns the
@@ -440,3 +451,14 @@
   Sunday), then the offset should be `-1`, because `:monday` returned by the driver (`2`) minus `1` = `1`."
   [driver]
   (start-of-week-offset-for-day (driver/db-start-of-week driver)))
+
+(defn json-unfolding-default
+  "Returns true if JSON fields should be unfolded by default for this database, and false otherwise."
+  [database]
+  ;; This allows adding support for nested-field-columns for drivers in the future and
+  ;; have json-unfolding enabled by default, without
+  ;; needing a migration to add the `json-unfolding=true` key to the database details.
+  (let [json-unfolding (get-in database [:details :json-unfolding])]
+    (if (nil? json-unfolding)
+      true
+      json-unfolding)))

@@ -1,3 +1,5 @@
+import { createMockSettingsState } from "metabase-types/store/mocks";
+
 // Database 2 contains an imaginary multi-schema database (like Redshift for instance)
 // Database 3 contains an imaginary database which doesn't have any schemas (like MySQL)
 export const normalizedMetadata = {
@@ -132,6 +134,7 @@ export const normalizedMetadata = {
     },
   },
   groups_list: { null: { list: [1, 2, 3] } },
+  questions: {},
 };
 
 export const initialPermissions = {
@@ -191,4 +194,5 @@ export const state = {
     },
   },
   entities: normalizedMetadata,
+  settings: createMockSettingsState(),
 };

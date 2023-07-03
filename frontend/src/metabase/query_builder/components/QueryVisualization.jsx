@@ -1,19 +1,16 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
+import { Component } from "react";
 import { t } from "ttag";
 
+import cx from "classnames";
 import LoadingSpinner from "metabase/components/LoadingSpinner";
 
+import Utils from "metabase/lib/utils";
+import { HARD_ROW_LIMIT } from "metabase-lib/queries/utils";
 import VisualizationError from "./VisualizationError";
 import VisualizationResult from "./VisualizationResult";
 import Warnings from "./Warnings";
 import RunButtonWithTooltip from "./RunButtonWithTooltip";
-
-import Utils from "metabase/lib/utils";
-
-import cx from "classnames";
-
-import { HARD_ROW_LIMIT } from "metabase/lib/query";
 
 export default class QueryVisualization extends Component {
   constructor(props, context) {
@@ -63,7 +60,7 @@ export default class QueryVisualization extends Component {
     } = this.props;
 
     return (
-      <div className={cx(className, "relative stacking-context")}>
+      <div className={cx(className, "relative stacking-context full-height")}>
         {isRunning ? (
           <VisualizationRunningState
             className="spread z2"
@@ -84,19 +81,18 @@ export default class QueryVisualization extends Component {
         )}
         <div
           className={cx("spread Visualization z1", {
-            "Visualization--errors": result && result.error,
             "Visualization--loading": isRunning,
           })}
         >
-          {result && result.error ? (
+          {result?.error ? (
             <VisualizationError
               className="spread"
               error={result.error}
               via={result.via}
-              card={question.card()}
+              question={question}
               duration={result.duration}
             />
-          ) : result && result.data ? (
+          ) : result?.data ? (
             <VisualizationResult
               {...this.props}
               className="spread"
@@ -118,7 +114,10 @@ export const VisualizationEmptyState = ({ className }) => (
   </div>
 );
 
-export const VisualizationRunningState = ({ className, loadingMessage }) => (
+export const VisualizationRunningState = ({
+  className = "",
+  loadingMessage,
+}) => (
   <div
     className={cx(
       className,
@@ -148,11 +147,9 @@ export const VisualizationDirtyState = ({
     })}
   >
     <RunButtonWithTooltip
-      className="shadowed"
+      className="py2 px3 shadowed"
       circular
       compact
-      py={2}
-      px={3}
       result={result}
       hidden={!isRunnable || hidden}
       isRunning={isRunning}

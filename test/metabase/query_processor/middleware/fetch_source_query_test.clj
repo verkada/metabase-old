@@ -1,15 +1,17 @@
 (ns metabase.query-processor.middleware.fetch-source-query-test
-  (:require [cheshire.core :as json]
-            [clojure.set :as set]
-            [clojure.test :refer :all]
-            [metabase.mbql.schema :as mbql.s]
-            [metabase.models :refer [Card]]
-            [metabase.query-processor :as qp]
-            [metabase.query-processor.middleware.fetch-source-query :as fetch-source-query]
-            [metabase.test :as mt]
-            [metabase.util :as u]
-            [schema.core :as s]
-            [toucan.db :as db]))
+  (:require
+   [cheshire.core :as json]
+   [clojure.test :refer :all]
+   [metabase.mbql.schema :as mbql.s]
+   [metabase.models :refer [Card]]
+   [metabase.query-processor :as qp]
+   [metabase.query-processor.middleware.fetch-source-query
+    :as fetch-source-query]
+   [metabase.test :as mt]
+   [metabase.util :as u]
+   [schema.core :as s]
+   [toucan2.core :as t2]
+   [toucan2.tools.with-temp :as t2.with-temp]))
 
 (defn- resolve-card-id-source-tables [query]
   (:pre (mt/test-qp-middleware fetch-source-query/resolve-card-id-source-tables query)))
@@ -34,7 +36,7 @@
 
 (deftest resolve-mbql-queries-test
   (testing "make sure that the `resolve-card-id-source-tables` middleware correctly resolves MBQL queries"
-    (mt/with-temp Card [card {:dataset_query (mt/mbql-query venues)}]
+    (t2.with-temp/with-temp [Card card {:dataset_query (mt/mbql-query venues)}]
       (is (= (assoc (default-result-with-inner-query
                      {:source-query   {:source-table (mt/id :venues)}
                       :source-card-id (u/the-id card)}
@@ -50,7 +52,7 @@
                         :breakout       [[:field "price" {:base-type :type/Integer}]]
                         :source-query   {:source-table (mt/id :venues)}
                         :source-card-id (u/the-id card)}
-                       (qp/query->expected-cols (mt/mbql-query :venues)))
+                       (qp/query->expected-cols (mt/mbql-query venues)))
                       :info {:card-id (u/the-id card)})
                (resolve-card-id-source-tables
                 (wrap-inner-query
@@ -58,13 +60,13 @@
                   :aggregation  [[:count]]
                   :breakout     [[:field "price" {:base-type :type/Integer}]]}))))))
 
-    (mt/with-temp Card [card {:dataset_query (mt/mbql-query checkins)}]
+    (t2.with-temp/with-temp [Card card {:dataset_query (mt/mbql-query checkins)}]
       (testing "with filters"
         (is (= (assoc (default-result-with-inner-query
                        {:source-query   {:source-table (mt/id :checkins)}
                         :source-card-id (u/the-id card)
                         :filter         [:between [:field "date" {:base-type :type/Date}] "2015-01-01" "2015-02-01"]}
-                       (qp/query->expected-cols (mt/mbql-query :checkins)))
+                       (qp/query->expected-cols (mt/mbql-query checkins)))
                       :info {:card-id (u/the-id card)})
                (resolve-card-id-source-tables
                 (wrap-inner-query
@@ -75,26 +77,23 @@
                                  "2015-02-01"]})))))))
   (testing "respects `enable-nested-queries` server setting"
     (mt/with-temp* [Card [{card-id :id} {:dataset_query (mt/mbql-query venues)}]]
-      (letfn [(resolve [] (resolve-card-id-source-tables
-                           (mt/mbql-query nil
-                                          {:source-table (str "card__" card-id)})))]
-        (mt/with-temporary-setting-values [enable-nested-queries true]
-          (is (some? (resolve-card-id-source-tables
-                      (mt/mbql-query nil
-                                     {:source-table (str "card__" card-id)})))))
-        (mt/with-temporary-setting-values [enable-nested-queries false]
-          (try (resolve-card-id-source-tables
-                (mt/mbql-query nil
-                               {:source-table (str "card__" card-id)}))
-               (is false "Nested queries disabled not honored")
-               (catch Exception e
-                 (is (schema= {:clause {:source-table (s/eq (str "card__" card-id))}}
-                              (ex-data e))))))))))
+      (mt/with-temporary-setting-values [enable-nested-queries true]
+        (is (some? (resolve-card-id-source-tables
+                    (mt/mbql-query nil
+                      {:source-table (str "card__" card-id)})))))
+      (mt/with-temporary-setting-values [enable-nested-queries false]
+        (try (resolve-card-id-source-tables
+              (mt/mbql-query nil
+                {:source-table (str "card__" card-id)}))
+             (is false "Nested queries disabled not honored")
+             (catch Exception e
+               (is (schema= {:clause {:source-table (s/eq (str "card__" card-id))}}
+                            (ex-data e)))))))))
 
 (deftest resolve-native-queries-test
   (testing "make sure that the `resolve-card-id-source-tables` middleware correctly resolves native queries"
-    (mt/with-temp Card [card {:dataset_query (mt/native-query
-                                               {:query (format "SELECT * FROM %s" (mt/format-name "venues"))})}]
+    (t2.with-temp/with-temp [Card card {:dataset_query (mt/native-query
+                                                         {:query (format "SELECT * FROM %s" (mt/format-name "venues"))})}]
       (is (= (assoc (default-result-with-inner-query
                      {:aggregation    [[:count]]
                       :breakout       [[:field "price" {:base-type :type/Integer}]]
@@ -123,9 +122,9 @@
                                     :source-card-id  (u/the-id card-1)
                                     :source-metadata nil}
                    :source-card-id (u/the-id card-2)}
-                  (qp/query->expected-cols (mt/mbql-query :venues)))
+                  (qp/query->expected-cols (mt/mbql-query venues)))
                  (assoc-in [:query :source-query :source-metadata]
-                           (mt/derecordize (qp/query->expected-cols (mt/mbql-query :venues))))
+                           (mt/derecordize (qp/query->expected-cols (mt/mbql-query venues))))
                  (assoc :info {:card-id (u/the-id card-2)}))
              (resolve-card-id-source-tables
               (wrap-inner-query
@@ -178,8 +177,8 @@
                    :display_name "Card Name"
                    :base_type    :type/Text
                    :field_ref    [:field (mt/id :categories :name) nil]}]]
-    (mt/with-temp Card [{card-id :id} {:dataset_query   (mt/mbql-query categories {:limit 100})
-                                       :result_metadata metadata}]
+    (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query   (mt/mbql-query categories {:limit 100})
+                                                 :result_metadata metadata}]
       (testing "Are `card__id` source tables resolved in `:joins`?"
         (is (= (mt/mbql-query venues
                  {:joins [{:source-query    {:source-table $$categories, :limit 100}
@@ -224,9 +223,9 @@
                                     :condition    [:= $category_id [:field %categories.id {:join-alias "c"}]]}]}})))))
 
       (testing "Can we recursively resolve multiple card ID `:source-table`s in Joins?"
-        (mt/with-temp Card [{card-2-id :id} {:dataset_query
-                                             (mt/mbql-query nil
-                                               {:source-table (str "card__" card-id), :limit 200})}]
+        (t2.with-temp/with-temp [Card {card-2-id :id} {:dataset_query
+                                                       (mt/mbql-query nil
+                                                         {:source-table (str "card__" card-id), :limit 200})}]
           (is (= (mt/mbql-query venues
                    {:joins [{:alias           "c"
                              :condition       [:= $category_id &c.$categories.id]
@@ -246,23 +245,24 @@
 
 (deftest circular-dependency-test
   (testing "Middleware should throw an Exception if we try to resolve a source query for a card whose source query is itself"
-    (mt/with-temp Card [{card-id :id}]
+    (t2.with-temp/with-temp [Card {card-id :id}]
       (let [circular-source-query {:database (mt/id)
                                    :type     :query
-                                   :query    {:source-table (str "card__" card-id)}}]
+                                   :query    {:source-table (str "card__" card-id)}}
+            save-error            (try
+                                    ;; `t2/update!` will fail because it will try to validate the query when it saves
+                                    (t2/query-one {:update :report_card
+                                                   :set    {:dataset_query (json/generate-string circular-source-query)}
+                                                   :where  [:= :id card-id]})
+                                    nil
+                                    (catch Throwable e
+                                      (str "Failed to save Card:" e)))]
         ;; Make sure save isn't the thing throwing the Exception
-        (let [save-error (try
-                           ;; `db/update!` will fail because it will try to validate the query when it saves
-                           (db/execute! {:update Card
-                                         :set    {:dataset_query (json/generate-string circular-source-query)}
-                                         :where  [:= :id card-id]})
-                           nil
-                           (catch Throwable e
-                             (str "Failed to save Card:" e)))]
-          (is (thrown?
-               clojure.lang.ExceptionInfo
-               (or save-error
-                   (resolve-card-id-source-tables circular-source-query))))))))
+        (is (thrown-with-msg?
+             clojure.lang.ExceptionInfo
+             #"Circular dependency"
+             (or save-error
+                 (resolve-card-id-source-tables circular-source-query)))))))
 
   (testing "middleware should throw an Exception if we try to resolve a source query card with a source query that refers back to the original"
     (let [circular-source-query (fn [card-id]
@@ -274,15 +274,16 @@
                       Card [{card-2-id :id} {:dataset_query (circular-source-query card-1-id)}]]
         ;; Make sure save isn't the thing throwing the Exception
         (let [save-error (try
-                           ;; `db/update!` will fail because it will try to validate the query when it saves,
-                           (db/execute! {:update Card
-                                         :set    {:dataset_query (json/generate-string (circular-source-query card-2-id))}
-                                         :where  [:= :id card-1-id]})
+                           ;; `t2/update!` will fail because it will try to validate the query when it saves,
+                           (t2/query-one {:update :report_card
+                                          :set    {:dataset_query (json/generate-string (circular-source-query card-2-id))}
+                                          :where  [:= :id card-1-id]})
                            nil
                            (catch Throwable e
                              (str "Failed to save Card:" e)))]
-          (is (thrown?
+          (is (thrown-with-msg?
                clojure.lang.ExceptionInfo
+               #"Circular dependency"
                (or save-error
                    (resolve-card-id-source-tables (circular-source-query card-1-id))))))))))
 
@@ -315,12 +316,12 @@
 
 (deftest dont-overwrite-existing-card-id-test
   (testing "Don't overwrite existing values of `[:info :card-id]`"
-    (mt/with-temp Card [{card-id :id} {:dataset_query (mt/mbql-query venues)}]
+    (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query (mt/mbql-query venues)}]
       (let [query (assoc (mt/mbql-query nil {:source-table (format "card__%d" card-id)})
                          :info {:card-id Integer/MAX_VALUE})]
         (is (= (assoc (mt/mbql-query nil {:source-query    {:source-table (mt/id :venues)}
                                           :source-card-id  card-id
-                                          :source-metadata (mt/derecordize (qp/query->expected-cols (mt/mbql-query :venues)))})
+                                          :source-metadata (mt/derecordize (qp/query->expected-cols (mt/mbql-query venues)))})
                       :info {:card-id Integer/MAX_VALUE})
                (resolve-card-id-source-tables query)))))))
 
@@ -329,7 +330,7 @@
     (let [query {:type     :native
                  :native   {:query "SELECT * FROM table\n-- remark"}
                  :database (mt/id)}]
-      (mt/with-temp Card [{card-id :id} {:dataset_query query}]
+      (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query query}]
         (is (= {:source-metadata nil
                 :source-query    {:native "SELECT * FROM table\n"}
                 :database        (mt/id)}
@@ -343,8 +344,30 @@
                             :collection  "checkins"
                             :mbql?       true}
                  :database (mt/id)}]
-      (mt/with-temp Card [{card-id :id} {:dataset_query query}]
+      (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query query}]
         (is (= {:source-metadata nil
-                :source-query    (set/rename-keys (:native query) {:query :native})
+                :source-query    {:projections ["_id" "user_id" "venue_id"],
+                                  :native      {:collection "checkins"
+                                                :query [{:$project {:_id "$_id"}}
+                                                        {:$limit 1048575}]}
+                                  :collection  "checkins"
+                                  :mbql?       true}
+                :database        (mt/id)}
+               (#'fetch-source-query/card-id->source-query-and-metadata card-id))))))
+  (testing "card-id->source-query-and-metadata-test should preserve mongodb native queries in string format (#30112)"
+    (let [query-str (str "[{\"$project\":\n"
+                         "   {\"_id\":\"$_id\",\n"
+                         "    \"user_id\":\"$user_id\",\n"
+                         "    \"venue_id\": \"$venue_id\"}},\n"
+                         " {\"$limit\": 1048575}]")
+          query {:type     :native
+                 :native   {:query query-str
+                            :collection  "checkins"}
+                 :database (mt/id)}]
+      (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query query}]
+        (is (= {:source-metadata nil
+                :source-query    {:native      {:collection "checkins"
+                                                :query      query-str}
+                                  :collection  "checkins"}
                 :database        (mt/id)}
                (#'fetch-source-query/card-id->source-query-and-metadata card-id)))))))

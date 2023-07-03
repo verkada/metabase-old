@@ -1,28 +1,26 @@
 /* eslint-disable react/prop-types */
 /* eslint-disable react/no-string-refs */
-import React from "react";
+import { createRef, Component } from "react";
 import PropTypes from "prop-types";
 import ReactDOM from "react-dom";
 import { t } from "ttag";
 
-import AggregationWidget from "./AggregationWidget";
-import BreakoutWidget from "./BreakoutWidget";
-import ExtendedOptions from "./ExtendedOptions";
-import FilterWidgetList from "./filters/FilterWidgetList";
-import FilterPopover from "./filters/FilterPopover";
-import Icon from "metabase/components/Icon";
+import cx from "classnames";
+import { Icon } from "metabase/core/components/Icon";
 import IconBorder from "metabase/components/IconBorder";
 import PopoverWithTrigger from "metabase/components/PopoverWithTrigger";
 import { DatabaseSchemaAndTableDataSelector } from "metabase/query_builder/components/DataSelector";
+import AggregationWidget from "./AggregationWidget";
+import BreakoutWidget from "./BreakoutWidget";
+import FilterWidgetList from "./filters/FilterWidgetList";
+import FilterPopover from "./filters/FilterPopover";
 
-import cx from "classnames";
-
-export default class GuiQueryEditor extends React.Component {
+export default class GuiQueryEditor extends Component {
   constructor(props) {
     super(props);
 
-    this.filterPopover = React.createRef();
-    this.guiBuilder = React.createRef();
+    this.filterPopover = createRef();
+    this.guiBuilder = createRef();
   }
 
   state = {
@@ -70,7 +68,7 @@ export default class GuiQueryEditor extends React.Component {
   renderAddIcon(targetRefName) {
     return (
       <IconBorder borderRadius="3px" ref={targetRefName}>
-        <Icon name="add" size={14} />
+        <Icon name="add" />
       </IconBorder>
     );
   }
@@ -95,11 +93,9 @@ export default class GuiQueryEditor extends React.Component {
           <FilterWidgetList
             query={query}
             filters={filters}
-            removeFilter={index =>
-              query.removeFilter(index).update(setDatasetQuery)
-            }
+            removeFilter={index => setDatasetQuery(query.removeFilter(index))}
             updateFilter={(index, filter) =>
-              query.updateFilter(index, filter).update(setDatasetQuery)
+              setDatasetQuery(query.updateFilter(index, filter))
             }
           />
         );
@@ -136,9 +132,7 @@ export default class GuiQueryEditor extends React.Component {
             <FilterPopover
               isNew
               query={query}
-              onChangeFilter={filter =>
-                query.filter(filter).update(setDatasetQuery)
-              }
+              onChangeFilter={filter => setDatasetQuery(query.filter(filter))}
               onClose={() => this.filterPopover.current.close()}
             />
           </PopoverWithTrigger>
@@ -179,10 +173,8 @@ export default class GuiQueryEditor extends React.Component {
             query={query}
             onChangeAggregation={aggregation =>
               aggregation
-                ? query
-                    .updateAggregation(index, aggregation)
-                    .update(setDatasetQuery)
-                : query.removeAggregation(index).update(setDatasetQuery)
+                ? setDatasetQuery(query.updateAggregation(index, aggregation))
+                : setDatasetQuery(query.removeAggregation(index))
             }
             showMetrics={false}
             showRawData
@@ -242,8 +234,8 @@ export default class GuiQueryEditor extends React.Component {
           breakoutOptions={query.breakoutOptions(breakout)}
           onChangeBreakout={breakout =>
             breakout
-              ? query.updateBreakout(index, breakout).update(setDatasetQuery)
-              : query.removeBreakout(index).update(setDatasetQuery)
+              ? setDatasetQuery(query.updateBreakout(index, breakout))
+              : setDatasetQuery(query.removeBreakout(index))
           }
         >
           {this.renderAdd(index === 0 ? t`Add a grouping` : null)}
@@ -384,7 +376,6 @@ export default class GuiQueryEditor extends React.Component {
           {this.renderGroupedBySection()}
           <div className="flex-full" />
           {this.props.children}
-          <ExtendedOptions {...this.props} />
         </div>
       </div>
     );

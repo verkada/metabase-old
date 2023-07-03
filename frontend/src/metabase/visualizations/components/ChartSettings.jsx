@@ -1,18 +1,18 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
-import cx from "classnames";
+import { Component } from "react";
+
+import * as React from "react";
 import { assocIn } from "icepick";
 import _ from "underscore";
 import { t } from "ttag";
 
 import Button from "metabase/core/components/Button";
 import Radio from "metabase/core/components/Radio";
-import { SectionContainer, SectionWarnings } from "./ChartSettings.styled";
 
 import Visualization from "metabase/visualizations/components/Visualization";
-import ChartSettingsWidget from "./ChartSettingsWidget";
 
 import { getSettingsWidgetsForSeries } from "metabase/visualizations/lib/settings/visualization";
+import { updateSeriesColor } from "metabase/visualizations/lib/series";
 import * as MetabaseAnalytics from "metabase/lib/analytics";
 import {
   getVisualizationTransformed,
@@ -21,11 +21,34 @@ import {
 import {
   updateSettings,
   getClickBehaviorSettings,
+  getComputedSettings,
+  getSettingsWidgets,
 } from "metabase/visualizations/lib/settings";
 
-// section names are localized
-const DEFAULT_TAB_PRIORITY = [t`Display`];
+import { keyForSingleSeries } from "metabase/visualizations/lib/settings/series";
+import { getSettingDefinitionsForColumn } from "metabase/visualizations/lib/settings/column";
+import { getColumnKey } from "metabase-lib/queries/utils/get-column-key";
 
+import ChartSettingsWidgetList from "./ChartSettingsWidgetList";
+import ChartSettingsWidgetPopover from "./ChartSettingsWidgetPopover";
+
+import {
+  SectionContainer,
+  SectionWarnings,
+  ChartSettingsRoot,
+  ChartSettingsMenu,
+  ChartSettingsPreview,
+  ChartSettingsListContainer,
+  ChartSettingsVisualizationContainer,
+  ChartSettingsFooterRoot,
+} from "./ChartSettings.styled";
+
+// section names are localized
+const DEFAULT_TAB_PRIORITY = [t`Data`];
+
+/**
+ * @deprecated HOCs are deprecated
+ */
 const withTransientSettingState = ComposedComponent =>
   class extends React.Component {
     static displayName = `withTransientSettingState[${
@@ -83,13 +106,13 @@ class ChartSettings extends Component {
   };
 
   // allows a widget to temporarily replace itself with a different widget
-  handleShowWidget = widget => {
-    this.setState({ currentWidget: widget });
+  handleShowWidget = (widget, ref) => {
+    this.setState({ popoverRef: ref, currentWidget: widget });
   };
 
   // go back to previously selected section
   handleEndShowWidget = () => {
-    this.setState({ currentWidget: null });
+    this.setState({ currentWidget: null, popoverRef: null });
   };
 
   handleResetSettings = () => {
@@ -101,6 +124,12 @@ class ChartSettings extends Component {
 
   handleChangeSettings = changedSettings => {
     this.props.onChange(updateSettings(this._getSettings(), changedSettings));
+  };
+
+  handleChangeSeriesColor = (seriesKey, color) => {
+    this.props.onChange(
+      updateSeriesColor(this._getSettings(), seriesKey, color),
+    );
   };
 
   handleDone = () => {
@@ -118,17 +147,22 @@ class ChartSettings extends Component {
     );
   }
 
+  _getComputedSettings() {
+    return this.props.computedSettings || {};
+  }
+
   _getWidgets() {
     if (this.props.widgets) {
       return this.props.widgets;
     } else {
-      const { isDashboard } = this.props;
+      const { isDashboard, dashboard } = this.props;
       const transformedSeries = this._getTransformedSeries();
 
       return getSettingsWidgetsForSeries(
         transformedSeries,
         this.handleChangeSettings,
         isDashboard,
+        { dashboardId: dashboard?.id },
       );
     }
   }
@@ -152,17 +186,97 @@ class ChartSettings extends Component {
     return transformedSeries;
   }
 
+  columnHasSettings(col) {
+    const { series } = this.props;
+    const settings = this._getSettings() || {};
+    const settingsDefs = getSettingDefinitionsForColumn(series, col);
+    const computedSettings = getComputedSettings(settingsDefs, col, settings);
+
+    return getSettingsWidgets(
+      settingsDefs,
+      settings,
+      computedSettings,
+      col,
+      _.noop,
+      {
+        series,
+      },
+    ).some(widget => !widget.hidden);
+  }
+
+  getStyleWidget = () => {
+    const widgets = this._getWidgets();
+    const series = this._getTransformedSeries();
+    const settings = this._getComputedSettings();
+    const { currentWidget } = this.state;
+    const seriesSettingsWidget =
+      currentWidget && widgets.find(widget => widget.id === "series_settings");
+
+    //We don't want to show series settings widget for waterfall charts
+    if (series?.[0]?.card?.display === "waterfall" || !seriesSettingsWidget) {
+      return null;
+    }
+
+    if (currentWidget.props?.seriesKey !== undefined) {
+      return {
+        ...seriesSettingsWidget,
+        props: {
+          ...seriesSettingsWidget.props,
+          initialKey: currentWidget.props.seriesKey,
+        },
+      };
+    } else if (currentWidget.props?.initialKey) {
+      const hasBreakouts = settings["graph.dimensions"]?.length > 1;
+
+      if (hasBreakouts) {
+        return null;
+      }
+
+      const singleSeriesForColumn = series.find(single => {
+        const metricColumn = single.data.cols[1];
+        if (metricColumn) {
+          return getColumnKey(metricColumn) === currentWidget.props.initialKey;
+        }
+      });
+
+      if (singleSeriesForColumn) {
+        return {
+          ...seriesSettingsWidget,
+          props: {
+            ...seriesSettingsWidget.props,
+            initialKey: keyForSingleSeries(singleSeriesForColumn),
+          },
+        };
+      }
+    }
+
+    return null;
+  };
+
+  getFormattingWidget = () => {
+    const widgets = this._getWidgets();
+    const { currentWidget } = this.state;
+    const widget =
+      currentWidget && widgets.find(widget => widget.id === currentWidget.id);
+
+    if (widget) {
+      return { ...widget, props: { ...widget.props, ...currentWidget.props } };
+    }
+
+    return null;
+  };
+
   render() {
     const {
       className,
       question,
       addField,
       noPreview,
-      children,
-      setSidebarPropsOverride,
       dashboard,
+      dashcard,
+      isDashboard,
     } = this.props;
-    const { currentWidget } = this.state;
+    const { popoverRef } = this.state;
 
     const settings = this._getSettings();
     const widgets = this._getWidgets();
@@ -193,7 +307,6 @@ class ChartSettings extends Component {
       "data",
       "display",
       "axes",
-      "labels",
       // include all section names so any forgotten sections are sorted to the end
       ...sectionNames.map(x => x.toLowerCase()),
     ];
@@ -210,21 +323,7 @@ class ChartSettings extends Component {
         : _.find(DEFAULT_TAB_PRIORITY, name => name in sections) ||
           sectionNames[0];
 
-    let visibleWidgets;
-    let widget = currentWidget && widgetsById[currentWidget.id];
-    if (widget) {
-      widget = {
-        ...widget,
-        hidden: false,
-        props: {
-          ...(widget.props || {}),
-          ...(currentWidget.props || {}),
-        },
-      };
-      visibleWidgets = [widget];
-    } else {
-      visibleWidgets = sections[currentSection] || [];
-    }
+    const visibleWidgets = sections[currentSection] || [];
 
     // This checks whether the current section contains a column settings widget
     // at the top level. If it does, we avoid hiding the section tabs and
@@ -240,10 +339,13 @@ class ChartSettings extends Component {
       onShowWidget: this.handleShowWidget,
       onEndShowWidget: this.handleEndShowWidget,
       currentSectionHasColumnSettings,
+      columnHasSettings: col => this.columnHasSettings(col),
+      onChangeSeriesColor: (seriesKey, color) =>
+        this.handleChangeSeriesColor(seriesKey, color),
     };
 
     const sectionPicker = (
-      <SectionContainer>
+      <SectionContainer isDashboard={isDashboard}>
         <Radio
           value={currentSection}
           onChange={this.handleShowSection}
@@ -251,36 +353,15 @@ class ChartSettings extends Component {
           optionNameFn={v => v}
           optionValueFn={v => v}
           optionKeyFn={v => v}
-          variant="bubble"
+          variant="underlined"
         />
       </SectionContainer>
     );
-
-    const widgetList = visibleWidgets.map(widget => (
-      <ChartSettingsWidget
-        key={`${widget.id}`}
-        {...widget}
-        {...extraWidgetProps}
-        setSidebarPropsOverride={setSidebarPropsOverride}
-      />
-    ));
 
     const onReset =
       !_.isEqual(settings, {}) && (settings || {}).virtual_card == null // resetting virtual cards wipes the text and broke the UI (metabase#14644)
         ? this.handleResetSettings
         : null;
-
-    // custom render prop layout:
-    if (children) {
-      return children({
-        sectionNames,
-        sectionPicker,
-        widgetList,
-        onDone: this.handleDone,
-        onCancel: this.handleCancel,
-        onReset: onReset,
-      });
-    }
 
     const showSectionPicker =
       // don't show section tabs for a single section
@@ -295,83 +376,73 @@ class ChartSettings extends Component {
 
     // default layout with visualization
     return (
-      <div className={cx(className, "flex flex-column")}>
-        {showSectionPicker && (
-          <div className="flex flex-no-shrink pl4 pt2 pb1">{sectionPicker}</div>
-        )}
-        {noPreview ? (
-          <div className="full-height relative scroll-y scroll-show pt3 pb4">
-            {widgetList}
-          </div>
-        ) : (
-          <div className="Grid flex-full">
-            <div
-              className="Grid-cell Cell--1of3 scroll-y scroll-show border-right py4"
-              data-testid="chartsettings-sidebar"
-            >
-              {widgetList}
-            </div>
-            <div className="Grid-cell flex flex-column pt2">
-              <div className="mx4 flex flex-column">
-                <SectionWarnings
-                  className="mx2 align-self-end"
-                  warnings={this.state.warnings}
-                  size={20}
-                />
-              </div>
-              <div className="mx4 flex-full relative">
-                <Visualization
-                  className="spread"
-                  rawSeries={rawSeries}
-                  showTitle
-                  isEditing
-                  isDashboard
-                  dashboard={dashboard}
-                  isSettings
-                  showWarnings
-                  onUpdateVisualizationSettings={this.handleChangeSettings}
-                  onUpdateWarnings={warnings => this.setState({ warnings })}
-                />
-              </div>
-              <ChartSettingsFooter
-                onDone={this.handleDone}
-                onCancel={this.handleCancel}
-                onReset={onReset}
+      <ChartSettingsRoot className={className}>
+        <ChartSettingsMenu data-testid="chartsettings-sidebar">
+          {showSectionPicker && sectionPicker}
+          <ChartSettingsListContainer className="scroll-show">
+            <ChartSettingsWidgetList
+              widgets={visibleWidgets}
+              extraWidgetProps={extraWidgetProps}
+            />
+          </ChartSettingsListContainer>
+        </ChartSettingsMenu>
+        {!noPreview && (
+          <ChartSettingsPreview>
+            <SectionWarnings warnings={this.state.warnings} size={20} />
+            <ChartSettingsVisualizationContainer>
+              <Visualization
+                className="spread"
+                rawSeries={rawSeries}
+                showTitle
+                isEditing
+                isDashboard
+                dashboard={dashboard}
+                dashcard={dashcard}
+                isSettings
+                showWarnings
+                onUpdateVisualizationSettings={this.handleChangeSettings}
+                onUpdateWarnings={warnings => this.setState({ warnings })}
               />
-            </div>
-          </div>
+            </ChartSettingsVisualizationContainer>
+            <ChartSettingsFooter
+              onDone={this.handleDone}
+              onCancel={this.handleCancel}
+              onReset={onReset}
+            />
+          </ChartSettingsPreview>
         )}
-      </div>
+        <ChartSettingsWidgetPopover
+          anchor={popoverRef}
+          widgets={[this.getFormattingWidget(), this.getStyleWidget()].filter(
+            widget => !!widget,
+          )}
+          handleEndShowWidget={this.handleEndShowWidget}
+        />
+      </ChartSettingsRoot>
     );
   }
 }
 
-const ChartSettingsFooter = ({ className, onDone, onCancel, onReset }) => (
-  <div className={cx("py2 px4", className)}>
-    <div className="float-right">
-      <Button
-        className="ml2"
-        onClick={onCancel}
-        data-metabase-event="Chart Settings;Cancel"
-      >{t`Cancel`}</Button>
-      <Button
-        primary
-        className="ml2"
-        onClick={onDone}
-        data-metabase-event="Chart Settings;Done"
-      >{t`Done`}</Button>
-    </div>
-
+const ChartSettingsFooter = ({ onDone, onCancel, onReset }) => (
+  <ChartSettingsFooterRoot>
     {onReset && (
       <Button
         borderless
         icon="refresh"
-        className="float-right ml2"
         data-metabase-event="Chart Settings;Reset"
         onClick={onReset}
       >{t`Reset to defaults`}</Button>
     )}
-  </div>
+    <Button
+      onClick={onCancel}
+      data-metabase-event="Chart Settings;Cancel"
+    >{t`Cancel`}</Button>
+    <Button
+      primary
+      onClick={onDone}
+      data-metabase-event="Chart Settings;Done"
+    >{t`Done`}</Button>
+  </ChartSettingsFooterRoot>
 );
 
 export default ChartSettings;

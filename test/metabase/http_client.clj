@@ -1,23 +1,25 @@
 (ns metabase.http-client
   "HTTP client for making API calls against the Metabase API. For test/REPL purposes."
-  (:require [cheshire.core :as json]
-            [clj-http.client :as http]
-            [clojure.edn :as edn]
-            [clojure.spec.alpha :as s]
-            [clojure.string :as str]
-            [clojure.test :as t]
-            [clojure.tools.logging :as log]
-            java-time
-            [metabase.config :as config]
-            [metabase.server.middleware.session :as mw.session]
-            [metabase.test-runner.assert-exprs :as test-runner.assert-exprs]
-            [metabase.test.initialize :as initialize]
-            [metabase.test.util.log :as tu.log]
-            [metabase.util :as u]
-            [metabase.util.date-2 :as u.date]
-            [metabase.util.schema :as su]
-            [ring.util.codec :as codec]
-            [schema.core :as schema]))
+  (:require
+   [cheshire.core :as json]
+   [clj-http.client :as http]
+   [clojure.edn :as edn]
+   [clojure.spec.alpha :as s]
+   [clojure.string :as str]
+   [clojure.test :as t]
+   [java-time]
+   [metabase.config :as config]
+   [metabase.server.middleware.session :as mw.session]
+   [metabase.test-runner.assert-exprs :as test-runner.assert-exprs]
+   [metabase.test.initialize :as initialize]
+   [metabase.util :as u]
+   [metabase.util.date-2 :as u.date]
+   [metabase.util.log :as log]
+   [metabase.util.schema :as su]
+   [ring.util.codec :as codec]
+   [schema.core :as schema]))
+
+(set! *warn-on-reflection* true)
 
 ;;; build-url
 
@@ -34,11 +36,15 @@
   (str *url-prefix* url (when (seq query-parameters)
                           (str "?" (str/join \& (letfn [(url-encode [s]
                                                           (cond-> s
-                                                            (keyword? s) u/qualified-name
-                                                            true         codec/url-encode))]
-                                                  (for [[k v] query-parameters]
-                                                    (str (url-encode k) \= (url-encode v)))))))))
-
+                                                            (keyword? s)       u/qualified-name
+                                                            true               codec/url-encode))
+                                                        (encode-key-value [k v]
+                                                          (str (url-encode k) \= (url-encode v)))]
+                                                  (flatten (for [[k value-or-values] query-parameters]
+                                                             (if (sequential? value-or-values)
+                                                               (for [v value-or-values]
+                                                                 (encode-key-value k v))
+                                                               [(encode-key-value k value-or-values)])))))))))
 
 ;;; parse-response
 
@@ -123,7 +129,7 @@
       (or (:id response)
           (throw (ex-info "Unexpected response" {:response response}))))
     (catch Throwable e
-      (println "Failed to authenticate with credentials" credentials e)
+      (log/errorf "Failed to authenticate with credentials %s %s" credentials e)
       (throw (ex-info "Failed to authenticate with credentials"
                       {:credentials credentials}
                       e)))))
@@ -131,7 +137,10 @@
 
 ;;; client
 
-(defn build-request-map [credentials http-body]
+(defn build-request-map
+  "Build the request map we ultimately pass to [[clj-http.client]]. Add user credential headers, specify JSON encoding,
+  and encode body as JSON."
+  [credentials http-body]
   (merge
    {:accept       :json
     :headers      {@#'mw.session/metabase-session-header
@@ -149,8 +158,8 @@
   exception."
   [method-name url body expected-status-code actual-status-code]
   ;; if we get a 401 authenticated but weren't expecting it, this means we need to log in and get new credentials for
-  ;; the current user. Throw an Exception and then `user->client` will handle it and call `authenticate` to get new
-  ;; creds and retry the request automatically.
+  ;; the current user. Throw an Exception and then [[metabase.test/user-http-request]] will handle it and call
+  ;; `authenticate` to get new creds and retry the request automatically.
   (when (and (= actual-status-code 401)
              (not= expected-status-code 401))
     (let [message (format "%s %s expected a status code of %d, got %d."
@@ -159,7 +168,7 @@
                     (json/parse-string body keyword)
                     (catch Throwable _
                       body))]
-      (throw (ex-info message {:status-code actual-status-code}))))
+      (throw (ex-info message {:status-code actual-status-code, :body body}))))
   ;; all other status codes should be test assertions against the expected status code if one was specified
   (when expected-status-code
     (t/is (= expected-status-code
@@ -194,7 +203,7 @@
         request-map (merge (build-request-map credentials http-body) request-options)
         request-fn  (method->request-fn method)
         url         (build-url url query-parameters)
-        method-name (str/upper-case (name method))
+        method-name (u/upper-case-en (name method))
         _           (log/debug method-name (pr-str url) (pr-str request-map))
         thunk       (fn []
                       (try
@@ -208,11 +217,6 @@
                                            :url     url
                                            :request request-map}
                                           e)))))
-        ;; if we expect a 4xx or 5xx status code then suppress and error messages that may be generated by the request.
-        thunk       (if (and expected-status (>= expected-status 400))
-                      (fn [] (tu.log/suppress-output (thunk)))
-                      thunk)
-
         ;; Now perform the HTTP request
         {:keys [status body], :as response} (thunk)]
     (log/debug method-name url status)
@@ -239,8 +243,13 @@
     (cond-> parsed
       ;; un-nest {:request-options {:request-options <my-options>}} => {:request-options <my-options>}
       (:request-options parsed) (update :request-options :request-options)
-      ;; convert query parameters into a flat map [{:k :a, :v 1} {:k :b, :v 2}] => {:a 1, :b 2}
-      (:query-parameters parsed) (update :query-parameters (partial into {} (map (juxt :k :v)))))))
+      ;; convert query parameters into a flat map [{:k :a, :v 1} {:k :b, :v 2} {:k :b, :v 3}] => {:a 1, :b [2 3]}
+      (:query-parameters parsed) (update :query-parameters (fn [query-params]
+                                                             (update-vals (group-by :k query-params)
+                                                                          (fn [values]
+                                                                            (if (> (count values) 1)
+                                                                              (map :v values)
+                                                                              (:v (first values))))))))))
 
 (def ^:private response-timeout-ms (u/seconds->ms 45))
 
@@ -249,7 +258,7 @@
   {:arglists '([credentials? method expected-status-code? url request-options? http-body-map? & query-parameters])}
   [& args]
   (let [parsed (parse-http-client-args args)]
-    (log/trace (pr-str (parse-http-client-args args)))
+    (log/trace parsed)
     (u/with-timeout response-timeout-ms
       (-client parsed))))
 

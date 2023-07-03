@@ -1,14 +1,17 @@
-import React, { Fragment } from "react";
+import { Fragment } from "react";
 import PropTypes from "prop-types";
 import { t } from "ttag";
 import { color } from "metabase/lib/colors";
 import * as Urls from "metabase/lib/urls";
-import { isSyncCompleted } from "metabase/lib/syncing";
-import { SAVED_QUESTIONS_VIRTUAL_DB_ID } from "metabase/lib/saved-questions";
+import { isSyncInProgress } from "metabase/lib/syncing";
 import Database from "metabase/entities/databases";
 import EntityItem from "metabase/components/EntityItem";
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import { Grid } from "metabase/components/Grid";
+import {
+  isVirtualCardId,
+  SAVED_QUESTIONS_VIRTUAL_DB_ID,
+} from "metabase-lib/metadata/utils/saved-questions";
 
 import { ANALYTICS_CONTEXT } from "../../constants";
 import BrowseHeader from "../BrowseHeader";
@@ -20,6 +23,7 @@ import {
 } from "./TableBrowser.styled";
 
 const propTypes = {
+  database: PropTypes.object,
   tables: PropTypes.array.isRequired,
   getTableUrl: PropTypes.func.isRequired,
   metadata: PropTypes.object,
@@ -30,6 +34,7 @@ const propTypes = {
 };
 
 const TableBrowser = ({
+  database,
   tables,
   getTableUrl,
   metadata,
@@ -50,12 +55,15 @@ const TableBrowser = ({
       <Grid>
         {tables.map(table => (
           <TableGridItem key={table.id}>
-            <TableCard hoverable={isSyncCompleted(table)}>
+            <TableCard hoverable={!isSyncInProgress(table)}>
               <TableLink
-                to={isSyncCompleted(table) ? getTableUrl(table, metadata) : ""}
+                to={
+                  !isSyncInProgress(table) ? getTableUrl(table, metadata) : ""
+                }
                 data-metabase-event={`${ANALYTICS_CONTEXT};Table Click`}
               >
                 <TableBrowserItem
+                  database={database}
                   table={table}
                   dbId={dbId}
                   xraysEnabled={xraysEnabled}
@@ -72,22 +80,27 @@ const TableBrowser = ({
 TableBrowser.propTypes = propTypes;
 
 const itemPropTypes = {
+  database: PropTypes.object,
   table: PropTypes.object.isRequired,
   dbId: PropTypes.number,
   xraysEnabled: PropTypes.bool,
 };
 
-const TableBrowserItem = ({ table, dbId, xraysEnabled }) => {
+const TableBrowserItem = ({ database, table, dbId, xraysEnabled }) => {
+  const isVirtual = isVirtualCardId(table.id);
+  const isLoading = isSyncInProgress(table);
+
   return (
     <EntityItem
       item={table}
       name={table.display_name || table.name}
       iconName="table"
       iconColor={color("accent2")}
-      loading={!isSyncCompleted(table)}
-      disabled={!isSyncCompleted(table)}
+      loading={isLoading}
+      disabled={isLoading}
       buttons={
-        isSyncCompleted(table) && (
+        !isLoading &&
+        !isVirtual && (
           <TableBrowserItemButtons
             tableId={table.id}
             dbId={dbId}
@@ -116,23 +129,12 @@ const TableBrowserItemButtons = ({ tableId, dbId, xraysEnabled }) => {
           data-metabase-event={`${ANALYTICS_CONTEXT};Table Item;X-ray Click`}
         >
           <Icon
-            name="bolt"
-            size={20}
+            name="bolt_filled"
             tooltip={t`X-ray this table`}
             color={color("warning")}
           />
         </TableActionLink>
       )}
-      <TableActionLink
-        to={`/reference/databases/${dbId}/tables/${tableId}`}
-        data-metabase-event={`${ANALYTICS_CONTEXT};Table Item;Reference Click`}
-      >
-        <Icon
-          name="reference"
-          tooltip={t`Learn about this table`}
-          color={color("text-medium")}
-        />
-      </TableActionLink>
     </Fragment>
   );
 };

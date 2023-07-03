@@ -1,11 +1,10 @@
-import React from "react";
 import { CollectionId, User } from "metabase-types/api";
-import AppBarLogo from "./AppBarLogo";
 import NewItemButton from "../NewItemButton";
 import ProfileLink from "../ProfileLink";
 import SearchBar from "../SearchBar";
 import CollectionBreadcrumbs from "../../containers/CollectionBreadcrumbs";
 import QuestionLineage from "../../containers/QuestionLineage";
+import AppBarLogo from "./AppBarLogo";
 import {
   AppBarLeftContainer,
   AppBarRightContainer,
@@ -18,7 +17,8 @@ export interface AppBarLargeProps {
   currentUser: User;
   collectionId?: CollectionId;
   isNavBarOpen?: boolean;
-  isNavBarVisible?: boolean;
+  isNavBarEnabled?: boolean;
+  isLogoVisible?: boolean;
   isSearchVisible?: boolean;
   isNewButtonVisible?: boolean;
   isProfileLinkVisible?: boolean;
@@ -32,7 +32,8 @@ const AppBarLarge = ({
   currentUser,
   collectionId,
   isNavBarOpen,
-  isNavBarVisible,
+  isNavBarEnabled,
+  isLogoVisible,
   isSearchVisible,
   isNewButtonVisible,
   isProfileLinkVisible,
@@ -41,28 +42,34 @@ const AppBarLarge = ({
   onToggleNavbar,
   onLogout,
 }: AppBarLargeProps): JSX.Element => {
+  const isNavBarVisible = isNavBarOpen && isNavBarEnabled;
+
   return (
-    <AppBarRoot isNavBarOpen={isNavBarOpen}>
-      <AppBarLeftContainer isNavBarVisible={isNavBarVisible}>
+    <AppBarRoot isNavBarOpen={isNavBarVisible}>
+      <AppBarLeftContainer
+        isNavBarEnabled={isNavBarEnabled}
+        isLogoVisible={isLogoVisible}
+      >
         <AppBarLogo
-          isNavBarOpen={isNavBarOpen}
-          isToggleVisible={isNavBarVisible}
+          isLogoVisible={isLogoVisible}
+          isNavBarOpen={isNavBarVisible}
+          isNavBarEnabled={isNavBarEnabled}
           onToggleClick={onToggleNavbar}
         />
         <AppBarInfoContainer
-          isVisible={!isNavBarOpen || isQuestionLineageVisible}
+          isVisible={!isNavBarVisible || isQuestionLineageVisible}
         >
           {isQuestionLineageVisible ? (
             <QuestionLineage />
           ) : isCollectionPathVisible ? (
-            <CollectionBreadcrumbs collectionId={collectionId} />
+            <CollectionBreadcrumbs />
           ) : null}
         </AppBarInfoContainer>
       </AppBarLeftContainer>
       {(isSearchVisible || isNewButtonVisible || isProfileLinkVisible) && (
         <AppBarRightContainer>
           {isSearchVisible && <SearchBar />}
-          {isNewButtonVisible && <NewItemButton />}
+          {isNewButtonVisible && <NewItemButton collectionId={collectionId} />}
           {isProfileLinkVisible && (
             <AppBarProfileLinkContainer>
               <ProfileLink user={currentUser} onLogout={onLogout} />
@@ -74,4 +81,5 @@ const AppBarLarge = ({
   );
 };
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default AppBarLarge;

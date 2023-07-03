@@ -1,7 +1,7 @@
 import styled from "@emotion/styled";
 import { css } from "@emotion/react";
 
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import { NAV_SIDEBAR_WIDTH } from "metabase/nav/constants";
 
 import { color, lighten } from "metabase/lib/colors";
@@ -29,18 +29,11 @@ export const Sidebar = styled.aside<{ isOpen: boolean }>`
   position: relative;
   flex-shrink: 0;
   align-items: center;
-  padding: 0.5rem 0;
   background-color: ${color("white")};
 
   overflow: auto;
   overflow-x: hidden;
   z-index: 4;
-
-  transition: width 0.2s;
-
-  @media (prefers-reduced-motion) {
-    transition: none;
-  }
 
   ${props => props.isOpen && openSidebarCSS};
 
@@ -61,7 +54,6 @@ export const NavRoot = styled.nav<{ isOpen: boolean }>`
 
   overflow-x: hidden;
   overflow-y: auto;
-  padding-bottom: 4rem;
 
   opacity: ${props => (props.isOpen ? 1 : 0)};
   transition: opacity 0.2s;
@@ -123,6 +115,16 @@ export const CollectionMenuList = styled.ul`
 `;
 
 export const LoadingContainer = styled.div`
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+`;
+
+export const LoadingContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   color: ${color("brand")};
   text-align: center;
 `;
@@ -133,12 +135,8 @@ export const LoadingTitle = styled.h2`
   margin-top: ${space(1)};
 `;
 
-export const HomePageLink = styled(SidebarLink)`
-  padding-left: 12px;
-`;
-
-export const BrowseLink = styled(SidebarLink)`
-  padding-left: 14px;
+export const PaddedSidebarLink = styled(SidebarLink)`
+  padding-left: ${space(2)};
 `;
 
 export const AddYourOwnDataLink = styled(SidebarLink)`
@@ -147,6 +145,9 @@ export const AddYourOwnDataLink = styled(SidebarLink)`
   color: ${color("white")};
   margin: ${space(1)};
   padding: 2px 6px;
+  svg {
+    color: ${color("brand-light")};
+  }
   transition: background-color 0.3s linear;
 
   @media (prefers-reduced-motion) {

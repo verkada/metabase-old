@@ -1,8 +1,7 @@
-import React from "react";
+import { Fragment } from "react";
 import { t } from "ttag";
-import _ from "underscore";
 
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import PopoverWithTrigger from "metabase/components/PopoverWithTrigger";
 import { PLUGIN_GROUP_MANAGERS } from "metabase/plugins";
 import {
@@ -11,6 +10,7 @@ import {
   getGroupNameLocalized,
 } from "metabase/lib/groups";
 import { Group, Member } from "metabase-types/api";
+import { isNotNull } from "metabase/core/utils/types";
 import GroupSummary from "../GroupSummary";
 import {
   MembershipActionsContainer,
@@ -22,7 +22,7 @@ import {
 const getGroupSections = (groups: Group[]) => {
   const defaultGroup = groups.find(isDefaultGroup);
   const adminGroup = groups.find(isAdminGroup);
-  const pinnedGroups = [defaultGroup, adminGroup].filter(Boolean) as Group[];
+  const pinnedGroups = [defaultGroup, adminGroup].filter(isNotNull);
   const regularGroups = groups.filter(
     group => !isAdminGroup(group) && !isDefaultGroup(group),
   );
@@ -101,7 +101,7 @@ export const MembershipSelect = ({
     <PopoverWithTrigger triggerElement={triggerElement}>
       <MembershipSelectContainer>
         {groupSections.map((section, index) => (
-          <React.Fragment key={index}>
+          <Fragment key={index}>
             {section.header && (
               <MembershipSelectHeader>{section.header}</MembershipSelectHeader>
             )}
@@ -140,11 +140,12 @@ export const MembershipSelect = ({
                 </MembershipSelectItem>
               );
             })}
-          </React.Fragment>
+          </Fragment>
         ))}
       </MembershipSelectContainer>
     </PopoverWithTrigger>
   );
 };
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default MembershipSelect;

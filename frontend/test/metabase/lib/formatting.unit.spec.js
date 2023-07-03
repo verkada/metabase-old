@@ -13,7 +13,7 @@ import {
   getCurrencySymbol,
 } from "metabase/lib/formatting";
 import ExternalLink from "metabase/core/components/ExternalLink";
-import { TYPE } from "metabase/lib/types";
+import { TYPE } from "metabase-lib/types/constants";
 
 describe("formatting", () => {
   describe("capitalize", () => {
@@ -103,6 +103,12 @@ describe("formatting", () => {
       });
       it("should format percentages", () => {
         const options = { compact: true, number_style: "percent" };
+        expect(formatNumber(0.867, { number_style: "percent" })).toEqual(
+          "86.7%",
+        );
+        expect(formatNumber(1.2345, { number_style: "percent" })).toEqual(
+          "123.45%",
+        );
         expect(formatNumber(0, options)).toEqual("0%");
         expect(formatNumber(0.001, options)).toEqual("0.1%");
         expect(formatNumber(0.0001, options)).toEqual("0.01%");
@@ -264,6 +270,16 @@ describe("formatting", () => {
       expect(isElementOfType(formatted, ExternalLink)).toEqual(false);
       // but it's formatted as a link
       expect(formatted.props.className).toEqual("link link--wrappable");
+    });
+    it("should render image", () => {
+      const formatted = formatValue("http://metabase.com/logo.png", {
+        jsx: true,
+        rich: true,
+        view_as: "image",
+        column: { semantic_type: "type/ImageURL" },
+      });
+      expect(formatted.type).toEqual("img");
+      expect(formatted.props.src).toEqual("http://metabase.com/logo.png");
     });
     it("should render image with a click behavior in jsx + rich mode (metabase#17161)", () => {
       const formatted = formatValue("http://metabase.com/logo.png", {
@@ -559,6 +575,26 @@ describe("formatting", () => {
         ),
       ).toEqual("6 AM");
     });
+
+    test.each([
+      ["minute", "Wed, April 27, 2022, 6:00 AM"],
+      ["hour", "Wed, April 27, 2022, 6:00 AM"],
+      ["day", "Wed, April 27, 2022"],
+      ["week", "Wed, April 27, 2022"],
+      ["month", "April, 2022"],
+      ["year", "2022"],
+    ])(
+      "should include weekday when date unit is smaller or equal whan a week",
+      (unit, formatted) => {
+        const dateString = "2022-04-27T06:00:00.000Z";
+
+        expect(
+          formatDateTimeWithUnit(dateString, unit, {
+            weekday_enabled: true,
+          }),
+        ).toEqual(formatted);
+      },
+    );
   });
 
   describe("formatTime", () => {

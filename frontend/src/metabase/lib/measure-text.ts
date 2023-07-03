@@ -1,12 +1,11 @@
+import {
+  FontStyle,
+  TextMeasurer,
+} from "metabase/visualizations/shared/types/measure-text";
+
 let canvas: HTMLCanvasElement | null = null;
 
-export type FontStyle = {
-  size: string;
-  family: string;
-  weight: string;
-};
-
-export const measureText = (text: string, style: FontStyle) => {
+export const measureText: TextMeasurer = (text: string, style: FontStyle) => {
   canvas ??= document.createElement("canvas");
   const context = canvas.getContext("2d");
 
@@ -15,5 +14,12 @@ export const measureText = (text: string, style: FontStyle) => {
   }
 
   context.font = `${style.weight} ${style.size} ${style.family}`;
-  return context.measureText(text);
+  const textMetrics = context.measureText(text);
+
+  return {
+    width: textMetrics.width,
+    height:
+      textMetrics.actualBoundingBoxAscent +
+      textMetrics.actualBoundingBoxDescent,
+  };
 };

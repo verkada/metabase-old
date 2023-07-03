@@ -1,7 +1,9 @@
-import _ from "underscore";
-
-import { Group, GroupsPermissions } from "metabase-types/api";
-import Database from "metabase-lib/lib/metadata/Database";
+import type {
+  ConcreteTableId,
+  Group,
+  GroupsPermissions,
+} from "metabase-types/api";
+import Database from "metabase-lib/metadata/Database";
 import {
   getFieldsPermission,
   getNativePermission,
@@ -39,14 +41,14 @@ function diffDatabasePermissions(
     databaseDiff.native = newNativePerm;
   }
   // check each table in this db
-  for (const table of database.tables) {
+  for (const table of database.tables ?? []) {
     const oldFieldsPerm = getFieldsPermission(
       oldPerms,
       groupId,
       {
         databaseId: database.id,
         schemaName: table.schema_name || "",
-        tableId: table.id,
+        tableId: table.id as ConcreteTableId,
       },
       "data",
     );
@@ -56,7 +58,7 @@ function diffDatabasePermissions(
       {
         databaseId: database.id,
         schemaName: table.schema_name || "",
-        tableId: table.id,
+        tableId: table.id as ConcreteTableId,
       },
       "data",
     );

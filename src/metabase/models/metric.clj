@@ -2,119 +2,152 @@
   "A Metric is a saved MBQL 'macro' expanding to a combination of `:aggregation` and/or `:filter` clauses.
   It is passed in as an `:aggregation` clause but is replaced by the `expand-macros` middleware with the appropriate
   clauses."
-  (:require [medley.core :as m]
-            [metabase.models.interface :as mi]
-            [metabase.models.revision :as revision]
-            [metabase.models.serialization.base :as serdes.base]
-            [metabase.models.serialization.hash :as serdes.hash]
-            [metabase.models.serialization.util :as serdes.util]
-            [metabase.util :as u]
-            [metabase.util.i18n :refer [tru]]
-            [metabase.util.schema :as su]
-            [schema.core :as s]
-            [toucan.db :as db]
-            [toucan.hydrate :refer [hydrate]]
-            [toucan.models :as models]))
+  (:require
+   [clojure.set :as set]
+   [medley.core :as m]
+   [metabase.lib.core :as lib]
+   [metabase.lib.metadata :as lib.metadata]
+   [metabase.lib.metadata.jvm :as lib.metadata.jvm]
+   [metabase.lib.metadata.protocols :as lib.metadata.protocols]
+   [metabase.lib.query :as lib.query]
+   [metabase.lib.schema.common :as lib.schema.common]
+   [metabase.mbql.util :as mbql.u]
+   [metabase.models.interface :as mi]
+   [metabase.models.revision :as revision]
+   [metabase.models.serialization :as serdes]
+   [metabase.util :as u]
+   [metabase.util.i18n :refer [tru]]
+   [metabase.util.log :as log]
+   [metabase.util.malli :as mu]
+   [methodical.core :as methodical]
+   [toucan2.core :as t2]
+   [toucan2.tools.hydrate :as t2.hydrate]))
 
-(models/defmodel Metric :metric)
+(def Metric
+  "Used to be the toucan1 model name defined using [[toucan.models/defmodel]], not it's a reference to the toucan2 model name.
+  We'll keep this till we replace all these symbols in our codebase."
+  :model/Metric)
 
-(defn- pre-update [{:keys [creator_id id], :as updates}]
-  (u/prog1 updates
+(methodical/defmethod t2/table-name :model/Metric [_model] :metric)
+
+(doto :model/Metric
+  (derive :metabase/model)
+  (derive :hook/timestamped?)
+  (derive :hook/entity-id)
+  (derive ::mi/read-policy.full-perms-for-perms-set)
+  (derive ::mi/write-policy.superuser)
+  (derive ::mi/create-policy.superuser))
+
+(t2/deftransforms :model/Metric
+  {:definition mi/transform-metric-segment-definition})
+
+(t2/define-before-update :model/Metric
+  [{:keys [creator_id id], :as metric}]
+  (u/prog1 (t2/changes metric)
     ;; throw an Exception if someone tries to update creator_id
-    (when (contains? updates :creator_id)
-      (when (not= creator_id (db/select-one-field :creator_id Metric :id id))
+    (when (contains? <> :creator_id)
+      (when (not= (:creator_id <>) (t2/select-one-fn :creator_id Metric :id id))
         (throw (UnsupportedOperationException. (tru "You cannot update the creator_id of a Metric.")))))))
 
-(defn- perms-objects-set [metric read-or-write]
+(defmethod mi/perms-objects-set Metric
+  [metric read-or-write]
   (let [table (or (:table metric)
-                  (db/select-one ['Table :db_id :schema :id] :id (u/the-id (:table_id metric))))]
+                  (t2/select-one ['Table :db_id :schema :id] :id (u/the-id (:table_id metric))))]
     (mi/perms-objects-set table read-or-write)))
 
-(u/strict-extend (class Metric)
-  models/IModel
-  (merge
-   models/IModelDefaults
-   {:types      (constantly {:definition :metric-segment-definition})
-    :properties (constantly {:timestamped? true
-                             :entity_id    true})
-    :pre-update pre-update})
-  mi/IObjectPermissions
-  (merge
-   mi/IObjectPermissionsDefaults
-   {:perms-objects-set perms-objects-set
-    :can-read?         (partial mi/current-user-has-full-permissions? :read)
-    ;; for the time being you need to be a superuser in order to create or update Metrics because the UI for doing so
-    ;; is only exposed in the admin panel
-    :can-write?        mi/superuser?
-    :can-create?       mi/superuser?})
+(mu/defn ^:private definition-description :- [:maybe ::lib.schema.common/non-blank-string]
+  "Calculate a nice description of a Metric's definition."
+  [metadata-provider :- lib.metadata/MetadataProvider
+   {:keys [definition], table-id :table_id, :as _metric}]
+  (when (seq definition)
+    (when-let [{database-id :db-id} (when table-id
+                                      (lib.metadata.protocols/table metadata-provider table-id))]
+      (try
+        (let [definition (merge {:source-table table-id}
+                                definition)
+              query      (lib.query/query-from-legacy-inner-query metadata-provider database-id definition)]
+          (lib/describe-query query))
+        (catch Throwable e
+          (log/error e (tru "Error calculating Metric description: {0}" (ex-message e)))
+          nil)))))
 
-  serdes.hash/IdentityHashable
-  {:identity-hash-fields (constantly [:name (serdes.hash/hydrated-hash :table)])})
+(defn- warmed-metadata-provider [metrics]
+  (let [metadata-provider (doto (lib.metadata.jvm/application-database-metadata-provider)
+                            (lib.metadata.protocols/store-metadatas! :metadata/metric metrics))
+        segment-ids       (into #{} (mbql.u/match (map :definition metrics)
+                                      [:segment (id :guard integer?) & _]
+                                      id))
+        segments          (lib.metadata.protocols/bulk-metadata metadata-provider :metadata/segment segment-ids)
+        field-ids         (mbql.u/referenced-field-ids (into []
+                                                             (comp cat (map :definition))
+                                                             [metrics segments]))
+        fields            (lib.metadata.protocols/bulk-metadata metadata-provider :metadata/column field-ids)
+        table-ids         (into #{}
+                                (comp cat (map :table_id))
+                                [fields segments metrics])]
+    ;; this is done for side-effects
+    (lib.metadata.protocols/bulk-metadata metadata-provider :metadata/table table-ids)
+    metadata-provider))
+
+(methodical/defmethod t2.hydrate/batched-hydrate [Metric :definition_description]
+  [_model _key metrics]
+  (let [metadata-provider (warmed-metadata-provider metrics)]
+    (for [metric metrics]
+      (assoc metric :definition_description (definition-description metadata-provider metric)))))
 
 
 ;;; --------------------------------------------------- REVISIONS ----------------------------------------------------
 
-(defn- serialize-metric [_ _ instance]
+(defmethod revision/serialize-instance Metric
+  [_model _id instance]
   (dissoc instance :created_at :updated_at))
 
-(defn- diff-metrics [this metric1 metric2]
+(defmethod revision/diff-map Metric
+  [model metric1 metric2]
   (if-not metric1
-    ;; this is the first version of the metric
+    ;; model is the first version of the metric
     (m/map-vals (fn [v] {:after v}) (select-keys metric2 [:name :description :definition]))
     ;; do our diff logic
-    (let [base-diff (revision/default-diff-map this
-                                               (select-keys metric1 [:name :description :definition])
-                                               (select-keys metric2 [:name :description :definition]))]
+    (let [base-diff ((get-method revision/diff-map :default)
+                     model
+                     (select-keys metric1 [:name :description :definition])
+                     (select-keys metric2 [:name :description :definition]))]
       (cond-> (merge-with merge
-                (m/map-vals (fn [v] {:after v}) (:after base-diff))
-                (m/map-vals (fn [v] {:before v}) (:before base-diff)))
+                          (m/map-vals (fn [v] {:after v}) (:after base-diff))
+                          (m/map-vals (fn [v] {:before v}) (:before base-diff)))
         (or (get-in base-diff [:after :definition])
             (get-in base-diff [:before :definition])) (assoc :definition {:before (get-in metric1 [:definition])
                                                                           :after  (get-in metric2 [:definition])})))))
 
-(u/strict-extend (class Metric)
-  revision/IRevisioned
-  (merge revision/IRevisionedDefaults
-         {:serialize-instance serialize-metric
-          :diff-map           diff-metrics}))
-
 
 ;;; ------------------------------------------------- SERIALIZATION --------------------------------------------------
 
-(defmethod serdes.base/serdes-generate-path "Metric"
-  [_ metric]
-  (let [base (serdes.base/infer-self-path "Metric" metric)]
-    [(assoc base :label (:name metric))]))
+(defmethod serdes/hash-fields Metric
+  [_metric]
+  [:name (serdes/hydrated-hash :table) :created_at])
 
-(defmethod serdes.base/extract-one "Metric"
+(defmethod serdes/extract-one "Metric"
   [_model-name _opts metric]
-  (-> (serdes.base/extract-one-basics "Metric" metric)
-      (update :table_id   serdes.util/export-table-fk)
-      (update :creator_id serdes.util/export-fk-keyed 'User :email)))
+  (-> (serdes/extract-one-basics "Metric" metric)
+      (update :table_id   serdes/*export-table-fk*)
+      (update :creator_id serdes/*export-user*)
+      (update :definition serdes/export-mbql)))
 
-(defmethod serdes.base/load-xform "Metric" [metric]
+(defmethod serdes/load-xform "Metric" [metric]
   (-> metric
-      serdes.base/load-xform-basics
-      (update :table_id   serdes.util/import-table-fk)
-      (update :creator_id serdes.util/import-fk-keyed 'User :email)))
+      serdes/load-xform-basics
+      (update :table_id   serdes/*import-table-fk*)
+      (update :creator_id serdes/*import-user*)
+      (update :definition serdes/import-mbql)))
 
-(defmethod serdes.base/serdes-dependencies "Metric" [{:keys [table_id]}]
-  [(serdes.util/table->path table_id)])
+(defmethod serdes/dependencies "Metric" [{:keys [definition table_id]}]
+  (into [] (set/union #{(serdes/table->path table_id)}
+                      (serdes/mbql-deps definition))))
 
-;;; ----------------------------------------------------- OTHER ------------------------------------------------------
-
-(s/defn retrieve-metrics :- [MetricInstance]
-  "Fetch all `Metrics` for a given `Table`. Optional second argument allows filtering by active state by providing one
-  of 3 keyword values: `:active`, `:deleted`, `:all`. Default filtering is for `:active`."
-  ([table-id :- su/IntGreaterThanZero]
-   (retrieve-metrics table-id :active))
-
-  ([table-id :- su/IntGreaterThanZero, state :- (s/enum :all :active :deleted)]
-   (-> (db/select Metric
-         {:where    [:and [:= :table_id table-id]
-                     (case state
-                       :all     true
-                       :active  [:= :archived false]
-                       :deleted [:= :archived true])]
-          :order-by [[:name :asc]]})
-       (hydrate :creator))))
+(defmethod serdes/storage-path "Metric" [metric _ctx]
+  (let [{:keys [id label]} (-> metric serdes/path last)]
+    (-> metric
+        :table_id
+        serdes/table->path
+        serdes/storage-table-path-prefix
+        (concat ["metrics" (serdes/storage-leaf-file-name id label)]))))

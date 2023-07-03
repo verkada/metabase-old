@@ -1,4 +1,3 @@
-import React from "react";
 import { t } from "ttag";
 
 import { FormMessageStyled } from "./FormMessage.styled";
@@ -32,6 +31,9 @@ const getMessage = ({
   return getSuccessMessage(formSuccess);
 };
 
+/**
+ * @deprecated
+ */
 export const getErrorMessage = (formError?: Response) => {
   if (formError) {
     if (formError.data && formError.data.message) {
@@ -44,10 +46,16 @@ export const getErrorMessage = (formError?: Response) => {
   }
 };
 
+/**
+ * @deprecated
+ */
 export const getSuccessMessage = (formSuccess?: Response) => {
   return formSuccess?.data?.message;
 };
 
+/**
+ * @deprecated
+ */
 function FormMessage({
   className,
   message,
@@ -68,4 +76,5 @@ function FormMessage({
   );
 }
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default FormMessage;

@@ -1,8 +1,8 @@
-import ObjectDetailDrill from "../drill/ObjectDetailDrill";
+import { ObjectDetailDrill } from "../drill/ObjectDetailDrill";
 
 const ObjectMode = {
   name: "object",
-  drills: () => [ObjectDetailDrill],
+  drills: [ObjectDetailDrill],
 };
 
 export default ObjectMode;

@@ -8,10 +8,6 @@ summary: |
 
 /api/email endpoints.
 
-  - [DELETE /api/email/](#delete-apiemail)
-  - [POST /api/email/test](#post-apiemailtest)
-  - [PUT /api/email/](#put-apiemail)
-
 ## `DELETE /api/email/`
 
 Clear all email related settings. You must be a superuser or have `setting` permission to do this.
@@ -27,7 +23,7 @@ Update multiple email Settings. You must be a superuser or have `setting` permis
 
 ### PARAMS:
 
-*  **`settings`** value must be a map.
+*  **`settings`** map
 
 ---
 

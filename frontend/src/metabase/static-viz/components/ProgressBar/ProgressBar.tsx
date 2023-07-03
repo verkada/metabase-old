@@ -1,18 +1,13 @@
-import React from "react";
 import { t } from "ttag";
 import { scaleLinear } from "@visx/scale";
 import { Group } from "@visx/group";
 import { ClipPath } from "@visx/clip-path";
+import { ColorGetter } from "metabase/static-viz/lib/colors";
 import { formatNumber } from "../../lib/numbers";
 import { Text } from "../Text";
 import { Pointer } from "./Pointer";
 import { CheckMarkIcon } from "./CheckMarkIcon";
-import {
-  createPalette,
-  getBarText,
-  getColors,
-  calculatePointerLabelShift,
-} from "./utils";
+import { getBarText, getColors, calculatePointerLabelShift } from "./utils";
 import { ProgressBarData } from "./types";
 
 const layout = {
@@ -40,14 +35,15 @@ interface ProgressBarProps {
     color: string;
     format: any;
   };
+  getColor: ColorGetter;
 }
 
 const ProgressBar = ({
   data,
   settings: { color, format },
+  getColor,
 }: ProgressBarProps) => {
-  const palette = createPalette(color);
-  const colors = getColors(data, palette);
+  const colors = getColors(data, color || getColor("accent1"));
   const barWidth = layout.width - layout.margin.left - layout.margin.right;
 
   const xMin = layout.margin.left;
@@ -152,4 +148,5 @@ const ProgressBar = ({
   );
 };
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default ProgressBar;

@@ -2,32 +2,17 @@
 title: "Collection"
 summary: |
   `/api/collection` endpoints. By default, these endpoints operate on Collections in the 'default' namespace, which is
-    the one that has things like Dashboards and Cards. Other namespaces of Collections exist as well, such as the
-    `:snippet` namespace, (called 'Snippet folders' in the UI). These namespaces are completely independent hierarchies.
-    To use these endpoints for other Collections namespaces, you can pass the `?namespace=` parameter (e.g.
-    `?namespace=snippet`).
+    the namespace that has things like Dashboards and Cards. Other namespaces of Collections exist as well, such as the
+    `:snippet` namespace, ('Snippet folders' in the UI). These namespaces are independent hierarchies. To use these
+    endpoints for other Collections namespaces, you can pass the `?namespace=` parameter (e.g., `?namespace=snippet`).
 ---
 
 # Collection
 
 `/api/collection` endpoints. By default, these endpoints operate on Collections in the 'default' namespace, which is
-  the one that has things like Dashboards and Cards. Other namespaces of Collections exist as well, such as the
-  `:snippet` namespace, (called 'Snippet folders' in the UI). These namespaces are completely independent hierarchies.
-  To use these endpoints for other Collections namespaces, you can pass the `?namespace=` parameter (e.g.
-  `?namespace=snippet`).
-
-  - [GET /api/collection/](#get-apicollection)
-  - [GET /api/collection/:id](#get-apicollectionid)
-  - [GET /api/collection/:id/items](#get-apicollectioniditems)
-  - [GET /api/collection/:id/timelines](#get-apicollectionidtimelines)
-  - [GET /api/collection/graph](#get-apicollectiongraph)
-  - [GET /api/collection/root](#get-apicollectionroot)
-  - [GET /api/collection/root/items](#get-apicollectionrootitems)
-  - [GET /api/collection/root/timelines](#get-apicollectionroottimelines)
-  - [GET /api/collection/tree](#get-apicollectiontree)
-  - [POST /api/collection/](#post-apicollection)
-  - [PUT /api/collection/:id](#put-apicollectionid)
-  - [PUT /api/collection/graph](#put-apicollectiongraph)
+  the namespace that has things like Dashboards and Cards. Other namespaces of Collections exist as well, such as the
+  `:snippet` namespace, ('Snippet folders' in the UI). These namespaces are independent hierarchies. To use these
+  endpoints for other Collections namespaces, you can pass the `?namespace=` parameter (e.g., `?namespace=snippet`).
 
 ## `GET /api/collection/`
 
@@ -37,11 +22,16 @@ Fetch a list of all Collections that the current user has read permissions for (
   By default, this returns non-archived Collections, but instead you can show archived ones by passing
   `?archived=true`.
 
+  By default, admin users will see all collections. To hide other user's collections pass in
+  `?exclude-other-user-collections=true`.
+
 ### PARAMS:
 
-*  **`archived`** value may be nil, or if non-nil, value must be a valid boolean string ('true' or 'false').
+*  **`archived`** nullable value must be a valid boolean string ('true' or 'false').
 
-*  **`namespace`** value may be nil, or if non-nil, value must be a non-blank string.
+*  **`exclude-other-user-collections`** nullable value must be a valid boolean string ('true' or 'false').
+
+*  **`namespace`** nullable value must be a non-blank string.
 
 ## `GET /api/collection/:id`
 
@@ -49,7 +39,7 @@ Fetch a specific Collection with standard details added.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `GET /api/collection/:id/items`
 
@@ -81,11 +71,11 @@ Fetch a specific Collection's timelines.
 
 ### PARAMS:
 
-*  **`id`** 
+*  **`id`** value must be an integer greater than zero.
 
-*  **`include`** value may be nil, or if non-nil, value must be one of: `events`.
+*  **`include`** nullable must equal events
 
-*  **`archived`** value may be nil, or if non-nil, value must be a valid boolean string ('true' or 'false').
+*  **`archived`** nullable boolean
 
 ## `GET /api/collection/graph`
 
@@ -95,7 +85,7 @@ You must be a superuser to do this.
 
 ### PARAMS:
 
-*  **`namespace`** value may be nil, or if non-nil, value must be a non-blank string.
+*  **`namespace`** nullable value must be a non-blank string.
 
 ## `GET /api/collection/root`
 
@@ -103,7 +93,7 @@ Return the 'Root' Collection object with standard details added.
 
 ### PARAMS:
 
-*  **`namespace`** value may be nil, or if non-nil, value must be a non-blank string.
+*  **`namespace`** nullable value must be a non-blank string.
 
 ## `GET /api/collection/root/items`
 
@@ -141,9 +131,9 @@ Fetch the root Collection's timelines.
 
 ### PARAMS:
 
-*  **`include`** value may be nil, or if non-nil, value must be one of: `events`.
+*  **`include`** nullable must equal events
 
-*  **`archived`** value may be nil, or if non-nil, value must be a valid boolean string ('true' or 'false').
+*  **`archived`** nullable boolean
 
 ## `GET /api/collection/tree`
 
@@ -170,9 +160,11 @@ Similar to `GET /`, but returns Collections in a tree structure, e.g.
 
 ### PARAMS:
 
-*  **`exclude-archived`** value may be nil, or if non-nil, value must be a valid boolean string ('true' or 'false').
+*  **`exclude-archived`** nullable boolean
 
-*  **`namespace`** value may be nil, or if non-nil, value must be a non-blank string.
+*  **`exclude-other-user-collections`** nullable boolean
+
+*  **`namespace`** nullable value must be a non-blank string.
 
 ## `POST /api/collection/`
 
@@ -217,14 +209,15 @@ Modify an existing Collection, including archiving or unarchiving it, or moving 
 ## `PUT /api/collection/graph`
 
 Do a batch update of Collections Permissions by passing in a modified graph.
+  Will overwrite parts of the graph that are present in the request, and leave the rest unchanged.
 
 You must be a superuser to do this.
 
 ### PARAMS:
 
-*  **`namespace`** value may be nil, or if non-nil, value must be a non-blank string.
+*  **`namespace`** nullable value must be a non-blank string.
 
-*  **`body`** value must be a map.
+*  **`body`** map
 
 ---
 

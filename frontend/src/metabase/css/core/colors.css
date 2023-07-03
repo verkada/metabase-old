@@ -11,8 +11,8 @@
   --color-error: #ed6e6e;
   --color-warning: #f9cf48;
   --color-text-dark: #4c5773;
-  --color-text-medium: #949aab;
-  --color-text-light: #b8bbc3;
+  --color-text-medium: #696e7b;
+  --color-text-light: #949aab;
   --color-text-white: #ffffff;
   --color-bg-black: #2e353b;
   --color-bg-dark: #93a1ab;
@@ -23,6 +23,7 @@
   --color-focus: #cbe2f7;
   --color-shadow: rgba(0, 0, 0, 0.13);
   --color-border: #eeecec;
+  --color-accent2: #b9e68a;
 }
 
 .text-default,
@@ -42,11 +43,6 @@
   color: var(--color-brand);
 }
 
-.text-brand-darken,
-.text-brand-darken-hover:hover {
-  color: var(--color-brand);
-}
-
 .text-brand-light,
 :local(.text-brand-light),
 .text-brand-light-hover:hover,
@@ -58,31 +54,12 @@
   background-color: var(--color-brand-light);
 }
 
-.bg-brand-dark,
-.bg-brand-dark-hover:hover {
+.bg-brand-dark {
   background-color: color-mod(var(--color-brand) blackness(12%));
 }
 
-.bg-brand-dark,
-.bg-brand-dark-hover:hover {
-  background-color: color-mod(var(--color-brand) blackness(12%));
-}
-
-.bg-brand-dark,
-.bg-brand-dark-hover:hover {
-  background-color: color-mod(var(--color-brand) blackness(12%));
-}
-
-.bg-brand,
-.bg-brand-hover:hover,
-.bg-brand-active:active {
+.bg-brand {
   background-color: var(--color-brand);
-}
-
-@media screen and (--breakpoint-min-md) {
-  .md-bg-brand {
-    background-color: var(--color-brand) !important;
-  }
 }
 
 /* success */
@@ -192,8 +169,7 @@
 }
 
 .bg-white,
-:local(.bg-white),
-.bg-white-hover:hover {
+:local(.bg-white) {
   background-color: var(--color-bg-white);
 }
 
@@ -219,13 +195,6 @@
 
 /* entity colors */
 
-.bg-dashboard {
-  background-color: var(--color-brand);
-}
-.text-dashboard {
-  color: var(--color-brand);
-}
-
 .bg-question {
   background-color: var(--color-bg-dark);
 }
@@ -241,4 +210,8 @@
 }
 .text-dark {
   color: var(--color-text-dark);
+}
+
+.text-accent2-hover:hover {
+  color: var(--color-accent2);
 }

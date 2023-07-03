@@ -1,12 +1,11 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import PropTypes from "prop-types";
 import { t } from "ttag";
 
-import TextInput from "metabase/components/TextInput";
-import Icon from "metabase/components/Icon";
 import { useDebouncedValue } from "metabase/hooks/use-debounced-value";
 import { SEARCH_DEBOUNCE_DURATION } from "metabase/lib/constants";
 
+import Input from "metabase/core/components/Input";
 import { DimensionListItem } from "./DimensionListItem";
 import {
   DimensionListTableName,
@@ -43,7 +42,12 @@ export const DimensionList = ({
   onRemoveDimension,
 }) => {
   const isDimensionSelected = dimension =>
-    dimensions.some(d => d.isSameBaseDimension(dimension));
+    dimensions.some(d => {
+      // sometimes `dimension` has a join-alias and `d` doesn't -- with/without is equivalent in this scenario
+      return d
+        .withoutJoinAlias()
+        .isSameBaseDimension(dimension.withoutJoinAlias());
+    });
 
   const [filter, setFilter] = useState("");
   const debouncedFilter = useDebouncedValue(filter, SEARCH_DEBOUNCE_DURATION);
@@ -82,30 +86,33 @@ export const DimensionList = ({
     onChangeDimension(getDimension(dimension));
   };
 
+  const handleFilterChange = e => setFilter(e.target.value);
+
   return (
     <>
       <DimensionListFilterContainer>
-        <TextInput
-          hasClearButton
+        <Input
+          fullWidth
           placeholder={t`Find...`}
-          onChange={setFilter}
           value={filter}
-          padding="sm"
-          borderRadius="md"
-          icon={<Icon name="search" size={16} />}
+          leftIcon="search"
+          onResetClick={() => setFilter("")}
+          onChange={handleFilterChange}
         />
       </DimensionListFilterContainer>
       {!hasFilter && (
         <ul data-testid="pinned-dimensions">
           {pinnedItems.map(item => {
-            const shouldIncludeTable =
-              item.dimension?.tableId?.() !== queryTableId;
+            const isForeignDimension =
+              item.dimension != null &&
+              item.dimension.tableId?.() !== queryTableId;
+            const name = getItemName(item, isForeignDimension);
 
             return (
               <DimensionListItem
-                key={getItemName(item)}
+                key={name}
                 dimension={item.dimension}
-                name={getItemName(item, shouldIncludeTable)}
+                name={name}
                 iconName={getItemIcon(item)}
                 dimensions={dimensions}
                 onRemoveDimension={handleRemove}

@@ -1,5 +1,5 @@
 import cx from "classnames";
-import React, {
+import {
   ButtonHTMLAttributes,
   forwardRef,
   ReactNode,
@@ -7,9 +7,8 @@ import React, {
   ElementType,
 } from "react";
 import styled from "@emotion/styled";
-import { color, space } from "styled-system";
 import _ from "underscore";
-import Icon from "metabase/components/Icon";
+import { Icon, IconName } from "metabase/core/components/Icon";
 import {
   ButtonContent,
   ButtonRoot,
@@ -33,14 +32,17 @@ const BUTTON_VARIANTS = [
   "fullWidth",
 ] as const;
 
-interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   as?: ElementType;
   className?: string;
+  to?: string;
+  tooltip?: string; // available when using as={Link}
+  href?: string;
 
-  icon?: string;
+  icon?: IconName | ReactNode;
   iconSize?: number;
   iconColor?: string;
-  iconRight?: string;
+  iconRight?: IconName;
   iconVertical?: boolean;
   labelBreakpoint?: string;
   children?: ReactNode;
@@ -62,6 +64,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   borderless?: boolean;
   onlyIcon?: boolean;
   fullWidth?: boolean;
+  onlyText?: boolean;
 }
 
 const BaseButton = forwardRef(function BaseButton(
@@ -76,7 +79,7 @@ const BaseButton = forwardRef(function BaseButton(
     labelBreakpoint,
     children,
     ...props
-  }: Props,
+  }: ButtonProps,
   ref: Ref<HTMLButtonElement>,
 ) {
   const variantClasses = BUTTON_VARIANTS.filter(variant => props[variant]).map(
@@ -94,8 +97,14 @@ const BaseButton = forwardRef(function BaseButton(
       purple={props.purple}
     >
       <ButtonContent iconVertical={iconVertical}>
-        {icon && (
-          <Icon color={iconColor} name={icon} size={iconSize ? iconSize : 14} />
+        {icon && typeof icon === "string" ? (
+          <Icon
+            color={iconColor}
+            name={icon as unknown as IconName}
+            size={iconSize ? iconSize : 16}
+          />
+        ) : (
+          icon
         )}
         {children && (
           <ButtonTextContainer
@@ -113,7 +122,7 @@ const BaseButton = forwardRef(function BaseButton(
           <Icon
             color={iconColor}
             name={iconRight}
-            size={iconSize ? iconSize : 14}
+            size={iconSize ? iconSize : 16}
           />
         )}
       </ButtonContent>
@@ -121,13 +130,11 @@ const BaseButton = forwardRef(function BaseButton(
   );
 });
 
-const Button = styled(BaseButton)`
-  ${color};
-  ${space};
-`;
+const Button = styled(BaseButton)``;
 
 Button.displayName = "Button";
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default Object.assign(Button, {
   Root: ButtonRoot,
   Content: ButtonContent,

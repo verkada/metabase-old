@@ -1,11 +1,9 @@
 import { t } from "ttag";
-import moment, {
-  DurationInputArg1,
-  DurationInputArg2,
-  MomentInput,
-} from "moment-timezone";
+import moment, { DurationInputArg2, MomentInput } from "moment-timezone";
 
 import MetabaseSettings from "metabase/lib/settings";
+
+import type { DatetimeUnit } from "metabase-types/api/query";
 
 addAbbreviatedLocale();
 
@@ -18,7 +16,6 @@ const TEXT_UNIT_FORMATS = {
 
 const NUMERIC_UNIT_FORMATS = {
   // workaround for https://github.com/metabase/metabase/issues/1992
-  year: (value: number) => moment().year(value).startOf("year"),
   "minute-of-hour": (value: number) => moment().minute(value).startOf("minute"),
   "hour-of-day": (value: number) => moment().hour(value).startOf("hour"),
   "day-of-week": (value: number) =>
@@ -40,6 +37,7 @@ const NUMERIC_UNIT_FORMATS = {
       .startOf("month"),
   "quarter-of-year": (value: number) =>
     moment().quarter(value).startOf("quarter"),
+  year: (value: number) => moment().year(value).startOf("year"),
 };
 
 // when you define a custom locale, moment automatically makes it the active global locale,
@@ -72,15 +70,16 @@ function addAbbreviatedLocale() {
   moment.locale(initialLocale);
 }
 
-export function checkIfTimeSpanTooGreat(
-  amount: DurationInputArg1,
-  key: DurationInputArg2,
-) {
+export function isValidTimeInterval(interval: number, unit: DurationInputArg2) {
+  if (!interval) {
+    return false;
+  }
+
   const now = moment();
-  const newTime = moment().add(amount, key);
+  const newTime = moment().add(interval, unit);
   const diff = now.diff(newTime, "years");
 
-  return Number.isNaN(diff);
+  return !Number.isNaN(diff);
 }
 
 export function formatFrame(frame: "first" | "last" | "mid") {
@@ -107,7 +106,7 @@ export function getDefaultTimezone() {
 
 export function getNumericDateStyleFromSettings() {
   const dateStyle = getDateStyleFromSettings();
-  return /\//.test(dateStyle) ? dateStyle : "M/D/YYYY";
+  return /\//.test(dateStyle || "") ? dateStyle : "M/D/YYYY";
 }
 
 export function getRelativeTime(timestamp: string) {
@@ -172,24 +171,25 @@ export function parseTime(value: moment.Moment | string) {
   return moment.utc(value);
 }
 
+type NUMERIC_UNIT_FORMATS_KEY_TYPE =
+  | "minute-of-hour"
+  | "hour-of-day"
+  | "day-of-week"
+  | "day-of-month"
+  | "day-of-year"
+  | "week-of-year"
+  | "month-of-year"
+  | "quarter-of-year"
+  | "year";
+
 // only attempt to parse the timezone if we're sure we have one (either Z or ±hh:mm or +-hhmm)
 // moment normally interprets the DD in YYYY-MM-DD as an offset :-/
 export function parseTimestamp(
   value: MomentInput,
-  unit:
-    | "year"
-    | "minute-of-hour"
-    | "hour-of-day"
-    | "day-of-week"
-    | "day-of-month"
-    | "day-of-year"
-    | "week-of-year"
-    | "month-of-year"
-    | "quarter-of-year"
-    | null = null,
-  local: boolean = false,
+  unit: DatetimeUnit | null = null,
+  local: unknown = false,
 ) {
-  let m;
+  let m: any;
   if (moment.isMoment(value)) {
     m = value;
   } else if (typeof value === "string" && /(Z|[+-]\d\d:?\d\d)$/.test(value)) {
@@ -197,7 +197,7 @@ export function parseTimestamp(
   } else if (unit && unit in TEXT_UNIT_FORMATS && typeof value === "string") {
     m = TEXT_UNIT_FORMATS[unit as "day-of-week"](value);
   } else if (unit && unit in NUMERIC_UNIT_FORMATS && typeof value == "number") {
-    m = NUMERIC_UNIT_FORMATS[unit](value);
+    m = NUMERIC_UNIT_FORMATS[unit as NUMERIC_UNIT_FORMATS_KEY_TYPE](value);
   } else if (typeof value === "number") {
     m = moment.utc(value, moment.ISO_8601);
   } else {

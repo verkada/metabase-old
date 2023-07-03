@@ -1,10 +1,13 @@
 (ns metabase.api.pivots
-  (:require [metabase.test :as mt]))
+  (:require
+   [metabase.test :as mt]))
 
 (defn applicable-drivers
   "Drivers that these pivot table tests should run on"
   []
   (disj (mt/normal-drivers-with-feature :expressions :left-join)
+        ;; mongodb doesn't support foreign keys required by this test
+        :mongo
         ;; Disable on Redshift due to OutOfMemory issue (see #18834)
         :redshift))
 
@@ -13,10 +16,10 @@
   []
   (mt/dataset sample-dataset
     (-> (mt/mbql-query orders
-          {:aggregation [[:count] [:sum $orders.quantity]]
-           :breakout    [$orders.user_id->people.state
-                         $orders.user_id->people.source
-                         $orders.product_id->products.category]})
+                       {:aggregation [[:count] [:sum $orders.quantity]]
+                        :breakout    [$orders.user_id->people.state
+                                      $orders.user_id->people.source
+                                      $orders.product_id->products.category]})
         (assoc :pivot_rows [1 0]
                :pivot_cols [2]))))
 

@@ -1,21 +1,20 @@
 (ns metabase.query-processor.util
   "Utility functions used by the global query processor and middleware functions."
-  (:require [buddy.core.codecs :as codecs]
-            [buddy.core.hash :as buddy-hash]
-            [cheshire.core :as json]
-            [clojure.string :as str]
-            [medley.core :as m]
-            [metabase.driver :as driver]
-            [metabase.util.schema :as su]
-            [schema.core :as s]))
+  (:require
+   [buddy.core.codecs :as codecs]
+   [buddy.core.hash :as buddy-hash]
+   [cheshire.core :as json]
+   [clojure.string :as str]
+   [medley.core :as m]
+   [metabase.driver :as driver]
+   [metabase.mbql.normalize :as mbql.normalize]
+   [metabase.util :as u]
+   [metabase.util.schema :as su]
+   [schema.core :as s]))
+
+(set! *warn-on-reflection* true)
 
 ;; TODO - I think most of the functions in this namespace that we don't remove could be moved to [[metabase.mbql.util]]
-
-(defn ^:deprecated mbql-query? ;; not really needed anymore since we don't need to normalize tokens
-  "Is the given query an MBQL query?
-   DEPRECATED: just look at `:type` directly since it is guaranteed to be normalized?"
-  [query]
-  (= :query (keyword (:type query))))
 
 (defn query-without-aggregations-or-limits?
   "Is the given query an MBQL query without a `:limit`, `:aggregation`, or `:page` clause?"
@@ -66,7 +65,7 @@
   keyword."
   [token :- su/KeywordOrString]
   (-> (name token)
-      str/lower-case
+      u/lower-case-en
       (str/replace #"_" "-")
       keyword))
 
@@ -111,12 +110,42 @@
   [[tyype identifier]]
   [tyype identifier])
 
+(def field-options-for-identification
+  "Set of FieldOptions that only mattered for identification purposes." ;; base-type is required for field that use name instead of id
+  #{:source-field :join-alias :base-type})
+
+(defn- field-normalizer
+  [field]
+  (let [[type id-or-name options ] (mbql.normalize/normalize-tokens field)]
+    [type id-or-name (select-keys options field-options-for-identification)]))
+
+(defn field->field-info
+  "Given a field and result_metadata, return a map of information about the field if result_metadata contains a matched field. "
+  [field result-metadata]
+  (let [[_ttype id-or-name options :as field] (field-normalizer field)]
+    (or
+      ;; try match field_ref first
+      (first (filter (fn [field-info]
+                       (= field
+                          (-> field-info
+                              :field_ref
+                              field-normalizer)))
+                     result-metadata))
+      ;; if not match name and base type for aggregation or field with string id
+      (first (filter (fn [field-info]
+                       (and (= (:name field-info)
+                               id-or-name)
+                            (= (:base-type options)
+                               (:base_type field-info))))
+                     result-metadata)))))
+
 (def preserved-keys
   "Keys that can survive merging metadata from the database onto metadata computed from the query. When merging
   metadata, the types returned should be authoritative. But things like semantic_type, display_name, and description
   can be merged on top."
   ;; TODO: ideally we don't preserve :id but some notion of :user-entered-id or :identified-id
-  [:id :description :display_name :semantic_type :fk_target_field_id :settings])
+  [:id :description :display_name :semantic_type
+   :fk_target_field_id :settings :visibility_type])
 
 (defn combine-metadata
   "Blend saved metadata from previous runs into fresh metadata from an actual run of the query.
@@ -127,7 +156,8 @@
   ensure survives."
   [fresh pre-existing]
   (let [by-key (m/index-by (comp field-ref->key :field_ref) pre-existing)]
-    (for [{:keys [field_ref] :as col} fresh]
-      (if-let [existing (get by-key (field-ref->key field_ref))]
+    (for [{:keys [field_ref source] :as col} fresh]
+      (if-let [existing (and (not= :aggregation source)
+                             (get by-key (field-ref->key field_ref)))]
         (merge col (select-keys existing preserved-keys))
         col))))

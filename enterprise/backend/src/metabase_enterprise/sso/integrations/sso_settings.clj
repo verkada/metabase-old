@@ -2,23 +2,24 @@
   "Namesapce for defining settings used by the SSO backends. This is separate as both the functions needed to support
   the SSO backends and the generic routing code used to determine which SSO backend to use need this
   information. Separating out this information creates a better dependency graph and avoids circular dependencies."
-  (:require [clojure.tools.logging :as log]
-            [metabase.models.setting :as setting :refer [defsetting]]
-            [metabase.util.i18n :refer [deferred-tru trs tru]]
-            [metabase.util.schema :as su]
-            [saml20-clj.core :as saml]
-            [schema.core :as s]))
+  (:require
+   [metabase.integrations.common :as integrations.common]
+   [metabase.models.setting :as setting :refer [defsetting]]
+   [metabase.models.setting.multi-setting :refer [define-multi-setting-impl]]
+   [metabase.public-settings :as public-settings]
+   [metabase.util.i18n :refer [deferred-tru trs tru]]
+   [metabase.util.log :as log]
+   [metabase.util.schema :as su]
+   [saml20-clj.core :as saml]
+   [schema.core :as s]))
+
+(set! *warn-on-reflection* true)
 
 (def ^:private GroupMappings
   (s/maybe {su/KeywordOrString [su/IntGreaterThanZero]}))
 
 (def ^:private ^{:arglists '([group-mappings])} validate-group-mappings
   (s/validator GroupMappings))
-
-(defsetting saml-enabled
-  (deferred-tru "Enable SAML authentication.")
-  :type    :boolean
-  :default false)
 
 (defsetting saml-identity-provider-uri
   (deferred-tru "This is the URL where your users go to log in to your identity provider. Depending on which IdP you''re
@@ -60,7 +61,8 @@ on your IdP, this usually looks something like http://www.example.com/141xkex604
   :sensitive? true)
 
 (defsetting saml-keystore-alias
-  (deferred-tru "Alias for the key that Metabase should use for signing SAML requests")
+  (deferred-tru "Alias for the key that {0} should use for signing SAML requests"
+                (public-settings/application-name-for-setting-descriptions))
   :default "metabase")
 
 (defsetting saml-attribute-email
@@ -86,22 +88,29 @@ on your IdP, this usually looks something like http://www.example.com/141xkex604
 
 (defsetting saml-group-mappings
   ;; Should be in the form: {"groupName": [1, 2, 3]} where keys are SAML groups and values are lists of MB groups IDs
-  (deferred-tru "JSON containing SAML to Metabase group mappings.")
+  (deferred-tru "JSON containing SAML to {0} group mappings."
+                (public-settings/application-name-for-setting-descriptions))
   :type    :json
+  :cache?  false
   :default {}
   :setter (comp (partial setting/set-value-of-type! :json :saml-group-mappings) validate-group-mappings))
 
-(defn saml-configured?
-  "Check if SAML is enabled and that the mandatory settings are configured."
-  []
-  (boolean (and (saml-enabled)
-                (saml-identity-provider-uri)
-                (saml-identity-provider-certificate))))
+(defsetting saml-configured
+  (deferred-tru "Are the mandatory SAML settings configured?")
+  :type   :boolean
+  :setter :none
+  :getter (fn [] (boolean
+                  (and (saml-identity-provider-uri)
+                       (saml-identity-provider-certificate)))))
 
-(defsetting jwt-enabled
-  (deferred-tru "Enable JWT based authentication")
+(defsetting saml-enabled
+  (deferred-tru "Is SAML authentication configured and enabled?")
   :type    :boolean
-  :default false)
+  :default false
+  :getter  (fn []
+             (if (saml-configured)
+               (setting/get-value-of-type :boolean :saml-enabled)
+               false)))
 
 (defsetting jwt-identity-provider-uri
   (deferred-tru "URL of JWT based login page"))
@@ -135,28 +144,37 @@ on your IdP, this usually looks something like http://www.example.com/141xkex604
 
 (defsetting jwt-group-mappings
   ;; Should be in the form: {"groupName": [1, 2, 3]} where keys are JWT groups and values are lists of MB groups IDs
-  (deferred-tru "JSON containing JWT to Metabase group mappings.")
+  (deferred-tru "JSON containing JWT to {0} group mappings."
+                (public-settings/application-name-for-setting-descriptions))
   :type    :json
+  :cache?  false
   :default {}
   :setter  (comp (partial setting/set-value-of-type! :json :jwt-group-mappings) validate-group-mappings))
 
-(defn jwt-configured?
-  "Check if JWT is enabled and that the mandatory settings are configured."
-  []
-  (boolean (and (jwt-enabled)
-                (jwt-identity-provider-uri)
-                (jwt-shared-secret))))
+(defsetting jwt-configured
+  (deferred-tru "Are the mandatory JWT settings configured?")
+  :type   :boolean
+  :setter :none
+  :getter (fn [] (boolean
+                  (and (jwt-identity-provider-uri)
+                       (jwt-shared-secret)))))
 
-(defsetting send-new-sso-user-admin-email?
-  (deferred-tru "Should new email notifications be sent to admins, for all new SSO users?")
-  :type :boolean
-  :default true)
+(defsetting jwt-enabled
+  (deferred-tru "Is JWT authentication configured and enabled?")
+  :type    :boolean
+  :default false
+  :getter  (fn []
+             (if (jwt-configured)
+               (setting/get-value-of-type :boolean :jwt-enabled)
+               false)))
 
-(defsetting other-sso-configured?
+(define-multi-setting-impl integrations.common/send-new-sso-user-admin-email? :ee
+  :getter (fn [] (setting/get-value-of-type :boolean :send-new-sso-user-admin-email?))
+  :setter (fn [send-emails] (setting/set-value-of-type! :boolean :send-new-sso-user-admin-email? send-emails)))
+
+(defsetting other-sso-enabled?
   "Are we using an SSO integration other than LDAP or Google Auth? These integrations use the `/auth/sso` endpoint for
   authorization rather than the normal login form or Google Auth button."
   :visibility :public
   :setter     :none
-  :getter     (fn [] (or
-                      (saml-configured?)
-                      (jwt-configured?))))
+  :getter     (fn [] (or (saml-enabled) (jwt-enabled))))

@@ -1,38 +1,95 @@
 /* eslint-disable react/prop-types */
-import React from "react";
+import {
+  ColumnItemIcon,
+  ColumnItemSpan,
+  ColumnItemContent,
+  ColumnItemContainer,
+  ColumnItemRoot,
+  ColumnItemDragHandle,
+  ColumnItemColorPicker,
+} from "./ColumnItem.styled";
 
-import Icon from "metabase/components/Icon";
-
-import cx from "classnames";
-
-const ActionIcon = ({ icon, onClick }) => (
-  <Icon
-    name={icon}
-    className="cursor-pointer text-light text-medium-hover ml1"
+const ActionIcon = ({ icon, onClick, ...props }) => (
+  <ColumnItemIcon
+    data-testid={props["data-testid"]}
+    onlyIcon
+    icon={icon}
+    iconSize={16}
     onClick={e => {
       e.stopPropagation();
-      onClick();
+      onClick(e.target);
     }}
   />
 );
 
-const ColumnItem = ({ title, onAdd, onRemove, onClick, onEdit, draggable }) => (
-  <div
-    className={cx("my1 bordered rounded overflow-hidden bg-white", {
-      "cursor-grab shadowed": draggable,
-      "cursor-pointer": onClick,
-    })}
-    onClick={onClick}
-  >
-    <div className="p1 border-bottom relative">
-      <div className="px1 flex align-center relative">
-        <span className="h4 flex-auto text-dark text-wrap">{title}</span>
-        {onEdit && <ActionIcon icon="gear" onClick={onEdit} />}
-        {onAdd && <ActionIcon icon="add" onClick={onAdd} />}
-        {onRemove && <ActionIcon icon="close" onClick={onRemove} />}
-      </div>
-    </div>
-  </div>
-);
+const ColumnItem = ({
+  title,
+  color,
+  onAdd,
+  onRemove,
+  onClick,
+  onEdit,
+  onEnable,
+  onColorChange,
+  draggable,
+  className = "",
+  ...props
+}) => {
+  return (
+    <ColumnItemRoot
+      className={className}
+      onClick={onClick}
+      isDraggable={draggable}
+      data-testid={draggable ? `draggable-item-${title}` : null}
+      {...props}
+      title={props.role ? title : null}
+    >
+      <ColumnItemContainer>
+        {draggable && <ColumnItemDragHandle name="grabber" />}
+        {onColorChange && color && (
+          <ColumnItemColorPicker
+            value={color}
+            onChange={onColorChange}
+            pillSize="small"
+          />
+        )}
+        <ColumnItemContent>
+          <ColumnItemSpan>{title}</ColumnItemSpan>
+          {onEdit && (
+            <ActionIcon
+              icon="ellipsis"
+              onClick={onEdit}
+              data-testid={`${title}-settings-button`}
+            />
+          )}
+          {onAdd && (
+            <ActionIcon
+              icon="add"
+              onClick={onAdd}
+              data-testid={`${title}-add-button`}
+            />
+          )}
+          {onRemove && (
+            <ActionIcon
+              icon="eye_outline"
+              onClick={onRemove}
+              data-testid={`${title}-hide-button`}
+            />
+          )}
+          {onEnable && (
+            <ActionIcon
+              icon="eye_crossed_out"
+              onClick={onEnable}
+              data-testid={`${title}-show-button`}
+            />
+          )}
+        </ColumnItemContent>
+      </ColumnItemContainer>
+    </ColumnItemRoot>
+  );
+};
 
-export default ColumnItem;
+export default Object.assign(ColumnItem, {
+  Root: ColumnItemRoot,
+  Container: ColumnItemContainer,
+});

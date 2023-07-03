@@ -1,12 +1,17 @@
 (ns metabase.models.metric-test
-  (:require [clojure.test :refer :all]
-            [metabase.models.database :refer [Database]]
-            [metabase.models.metric :as metric :refer [Metric]]
-            [metabase.models.serialization.hash :as serdes.hash]
-            [metabase.models.table :refer [Table]]
-            [metabase.test :as mt]
-            [metabase.util :as u]
-            [toucan.db :as db]))
+  (:require
+   [clojure.test :refer :all]
+   [metabase.models :refer [Database Segment Table]]
+   [metabase.models.metric :as metric :refer [Metric]]
+   [metabase.models.revision :as revision]
+   [metabase.models.serialization :as serdes]
+   [metabase.test :as mt]
+   [toucan2.core :as t2]
+   [toucan2.tools.with-temp :as t2.with-temp])
+  (:import
+   (java.time LocalDateTime)))
+
+(set! *warn-on-reflection* true)
 
 (def ^:private metric-defaults
   {:description             nil
@@ -18,48 +23,24 @@
    :entity_id               true
    :definition              nil})
 
-(defn- user-details
-  [username]
-  (dissoc (mt/fetch-user username) :date_joined :last_login))
-
-(deftest retrieve-metrics-test
-  (mt/with-temp* [Database [{database-id :id}]
-                  Table    [{table-id-1 :id}    {:db_id database-id}]
-                  Table    [{table-id-2 :id}    {:db_id database-id}]
-                  Metric   [{segement-id-1 :id
-                             :as segment-1}     {:table_id table-id-1, :name "Metric 1", :description nil}]
-                  Metric   [{metric-id-2 :id}   {:table_id table-id-2}]
-                  Metric   [{metric-id3 :id}    {:table_id table-id-1, :archived true}]]
-    (is (= [(merge
-             metric-defaults
-             {:creator_id (mt/user->id :rasta)
-              :creator    (user-details :rasta)
-              :entity_id  (:entity_id segment-1)
-              :name       "Metric 1"})]
-           (for [metric (u/prog1 (metric/retrieve-metrics table-id-1)
-                                 (assert (= 1 (count <>))))]
-             (update (dissoc (into {} metric) :id :table_id :created_at :updated_at)
-                     :creator dissoc :date_joined :last_login))))))
-
-
 (deftest update-test
   (testing "Updating"
-    (mt/with-temp Metric [{:keys [id]} {:creator_id (mt/user->id :rasta)}]
+    (t2.with-temp/with-temp [Metric {:keys [id]} {:creator_id (mt/user->id :rasta)}]
       (testing "you should not be able to change the creator_id of a Metric"
         (is (thrown-with-msg?
-             UnsupportedOperationException
+             Exception
              #"You cannot update the creator_id of a Metric"
-             (db/update! Metric id {:creator_id (mt/user->id :crowberto)}))))
+             (t2/update! Metric id {:creator_id (mt/user->id :crowberto)}))))
 
       (testing "you shouldn't be able to set it to `nil` either"
         (is (thrown-with-msg?
-             UnsupportedOperationException
+             Exception
              #"You cannot update the creator_id of a Metric"
-             (db/update! Metric id {:creator_id nil}))))
+             (t2/update! Metric id {:creator_id nil}))))
 
       (testing "However calling `update!` with a value that is the same as the current value shouldn't throw an Exception"
-        (is (= true
-               (db/update! Metric id {:creator_id (mt/user->id :rasta)})))))))
+        (is (= 1
+               (t2/update! Metric id {:creator_id (mt/user->id :rasta)})))))))
 
 
 ;; ## Metric Revisions
@@ -81,7 +62,7 @@
                      :definition  {:aggregation [[:count]]
                                    :filter      [:> [:field 4 nil] "2014-10-19"]}})
              (into {}
-                   (-> (#'metric/serialize-metric Metric (:id metric) metric)
+                   (-> (revision/serialize-instance Metric (:id metric) metric)
                        (update :id boolean)
                        (update :table_id boolean))))))))
 
@@ -97,48 +78,90 @@
                             :after  "BBB"}
               :name        {:before "Toucans in the rainforest"
                             :after  "Something else"}}
-             (#'metric/diff-metrics Metric metric (assoc metric
-                                                         :name        "Something else"
-                                                         :description "BBB"
-                                                         :definition  {:filter [:between [:field 4 nil] "2014-07-01" "2014-10-19"]})))))
+             (revision/diff-map Metric metric (assoc metric
+                                                     :name        "Something else"
+                                                     :description "BBB"
+                                                     :definition  {:filter [:between [:field 4 nil] "2014-07-01" "2014-10-19"]})))))
 
     (testing "test case where definition doesn't change"
       (is (= {:name {:before "A"
                      :after  "B"}}
-             (#'metric/diff-metrics Metric
-                                    {:name        "A"
-                                     :description "Unchanged"
-                                     :definition  {:filter [:and [:> 4 "2014-10-19"]]}}
-                                    {:name        "B"
-                                     :description "Unchanged"
-                                     :definition  {:filter [:and [:> 4 "2014-10-19"]]}}))))
+             (revision/diff-map Metric
+                                {:name        "A"
+                                 :description "Unchanged"
+                                 :definition  {:filter [:and [:> 4 "2014-10-19"]]}}
+                                {:name        "B"
+                                 :description "Unchanged"
+                                 :definition  {:filter [:and [:> 4 "2014-10-19"]]}}))))
 
     (testing "first version, so comparing against nil"
       (is (= {:name        {:after "A"}
               :description {:after "Unchanged"}
               :definition  {:after {:filter [:and [:> 4 "2014-10-19"]]}}}
-             (#'metric/diff-metrics Metric
-                                    nil
-                                    {:name        "A"
-                                     :description "Unchanged"
-                                     :definition  {:filter [:and [:> 4 "2014-10-19"]]}}))))
+             (revision/diff-map Metric
+                                nil
+                                {:name        "A"
+                                 :description "Unchanged"
+                                 :definition  {:filter [:and [:> 4 "2014-10-19"]]}}))))
 
     (testing "removals only"
       (is (= {:definition {:before {:filter [:and [:> 4 "2014-10-19"] [:= 5 "yes"]]}
                            :after  {:filter [:and [:> 4 "2014-10-19"]]}}}
-             (#'metric/diff-metrics Metric
-                                    {:name        "A"
-                                     :description "Unchanged"
-                                     :definition  {:filter [:and [:> 4 "2014-10-19"] [:= 5 "yes"]]}}
-                                    {:name        "A"
-                                     :description "Unchanged"
-                                     :definition  {:filter [:and [:> 4 "2014-10-19"]]}}))))))
+             (revision/diff-map Metric
+                                {:name        "A"
+                                 :description "Unchanged"
+                                 :definition  {:filter [:and [:> 4 "2014-10-19"] [:= 5 "yes"]]}}
+                                {:name        "A"
+                                 :description "Unchanged"
+                                 :definition  {:filter [:and [:> 4 "2014-10-19"]]}}))))))
 
 (deftest identity-hash-test
   (testing "Metric hashes are composed of the metric name and table identity-hash"
-    (mt/with-temp* [Database [db    {:name "field-db" :engine :h2}]
-                    Table    [table {:schema "PUBLIC" :name "widget" :db_id (:id db)}]
-                    Metric   [metric {:name "measurement" :table_id (:id table)}]]
-      (is (= "8fb4650a"
-             (serdes.hash/raw-hash ["measurement" (serdes.hash/identity-hash table)])
-             (serdes.hash/identity-hash metric))))))
+    (let [now (LocalDateTime/of 2022 9 1 12 34 56)]
+      (mt/with-temp* [Database [db    {:name "field-db" :engine :h2}]
+                      Table    [table {:schema "PUBLIC" :name "widget" :db_id (:id db)}]
+                      Metric   [metric {:name "measurement" :table_id (:id table) :created_at now}]]
+        (is (= "a2318866"
+               (serdes/raw-hash ["measurement" (serdes/identity-hash table) now])
+               (serdes/identity-hash metric)))))))
+
+(deftest definition-description-missing-definition-test
+  (testing ":definition_description should hydrate to nil if :definition is missing"
+    (t2.with-temp/with-temp [Metric metric {:name     "Metric A"
+                                            :table_id (mt/id :users)}]
+      (is (= nil
+             (:definition_description (t2/hydrate metric :definition_description)))))))
+
+(deftest definition-description-test
+  (t2.with-temp/with-temp [Segment {segment-id :id} {:name       "Checkins with ID = 1"
+                                                     :table_id   (mt/id :checkins)
+                                                     :definition (:query (mt/mbql-query checkins
+                                                                           {:filter [:= $id 1]}))}
+                           Metric metric {:name       "Metric B"
+                                          :table_id   (mt/id :venues)
+                                          :definition (:query (mt/mbql-query venues
+                                                                {:aggregation [[:sum $category_id->categories.name]]
+                                                                 :filter      [:and
+                                                                               [:= $price 4]
+                                                                               [:segment segment-id]]}))}]
+    (is (= "Venues, Sum of Category → Name, Filtered by Price equals 4 and Checkins with ID = 1"
+           (:definition_description (t2/hydrate metric :definition_description))))))
+
+(deftest definition-description-missing-source-table-test
+  (testing "Should work if `:definition` does not include `:source-table`"
+    (t2.with-temp/with-temp [Metric metric {:name       "Metric B"
+                                            :table_id   (mt/id :venues)
+                                            :definition (mt/$ids venues
+                                                          {:aggregation [[:sum $category_id->categories.name]]
+                                                           :filter      [:= $price 4]})}]
+      (is (= "Venues, Sum of Category → Name, Filtered by Price equals 4"
+             (:definition_description (t2/hydrate metric :definition_description)))))))
+
+(deftest definition-description-invalid-query-test
+  (testing "Should return `nil` if query is invalid"
+    (t2.with-temp/with-temp [Metric metric {:name       "Metric B"
+                                            :table_id   (mt/id :venues)
+                                            :definition (mt/$ids venues
+                                                          {:aggregation [[:sum $category_id->categories.name]]
+                                                           :filter      [:= [:field Integer/MAX_VALUE nil] 4]})}]
+      (is (nil? (:definition_description (t2/hydrate metric :definition_description)))))))

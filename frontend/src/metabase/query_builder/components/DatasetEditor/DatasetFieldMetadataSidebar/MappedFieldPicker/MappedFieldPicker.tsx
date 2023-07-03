@@ -1,12 +1,11 @@
-import React, { useCallback, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { t } from "ttag";
-import _ from "underscore";
 
-import { isVirtualCardId } from "metabase/lib/saved-questions";
 import { SchemaTableAndFieldDataSelector } from "metabase/query_builder/components/DataSelector";
 
-import Field from "metabase-lib/lib/metadata/Field";
 import Fields from "metabase/entities/fields";
+import { isVirtualCardId } from "metabase-lib/metadata/utils/saved-questions";
+import Field from "metabase-lib/metadata/Field";
 
 import { StyledSelectButton } from "./MappedFieldPicker.styled";
 
@@ -104,4 +103,5 @@ function MappedFieldPicker({
     />
   );
 }
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default Fields.load(query)(MappedFieldPicker);

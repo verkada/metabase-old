@@ -8,56 +8,23 @@ summary: |
 
 /api/dashboard endpoints.
 
-  - [DELETE /api/dashboard/:dashboard-id/public_link](#delete-apidashboarddashboard-idpublic_link)
-  - [DELETE /api/dashboard/:id](#delete-apidashboardid)
-  - [DELETE /api/dashboard/:id/cards](#delete-apidashboardidcards)
-  - [GET /api/dashboard/](#get-apidashboard)
-  - [GET /api/dashboard/:id](#get-apidashboardid)
-  - [GET /api/dashboard/:id/params/:param-key/search/:query](#get-apidashboardidparamsparam-keysearchquery)
-  - [GET /api/dashboard/:id/params/:param-key/values](#get-apidashboardidparamsparam-keyvalues)
-  - [GET /api/dashboard/:id/related](#get-apidashboardidrelated)
-  - [GET /api/dashboard/:id/revisions](#get-apidashboardidrevisions)
-  - [GET /api/dashboard/embeddable](#get-apidashboardembeddable)
-  - [GET /api/dashboard/params/valid-filter-fields](#get-apidashboardparamsvalid-filter-fields)
-  - [GET /api/dashboard/public](#get-apidashboardpublic)
-  - [POST /api/dashboard/](#post-apidashboard)
-  - [POST /api/dashboard/:dashboard-id/dashcard/:dashcard-id/card/:card-id/query](#post-apidashboarddashboard-iddashcarddashcard-idcardcard-idquery)
-  - [POST /api/dashboard/:dashboard-id/dashcard/:dashcard-id/card/:card-id/query/:export-format](#post-apidashboarddashboard-iddashcarddashcard-idcardcard-idqueryexport-format)
-  - [POST /api/dashboard/:dashboard-id/public_link](#post-apidashboarddashboard-idpublic_link)
-  - [POST /api/dashboard/:from-dashboard-id/copy](#post-apidashboardfrom-dashboard-idcopy)
-  - [POST /api/dashboard/:id/cards](#post-apidashboardidcards)
-  - [POST /api/dashboard/:id/revert](#post-apidashboardidrevert)
-  - [POST /api/dashboard/pivot/:dashboard-id/dashcard/:dashcard-id/card/:card-id/query](#post-apidashboardpivotdashboard-iddashcarddashcard-idcardcard-idquery)
-  - [POST /api/dashboard/save](#post-apidashboardsave)
-  - [POST /api/dashboard/save/collection/:parent-collection-id](#post-apidashboardsavecollectionparent-collection-id)
-  - [PUT /api/dashboard/:id](#put-apidashboardid)
-  - [PUT /api/dashboard/:id/cards](#put-apidashboardidcards)
-
 ## `DELETE /api/dashboard/:dashboard-id/public_link`
 
 Delete the publicly-accessible link to this Dashboard.
 
 ### PARAMS:
 
-*  **`dashboard-id`**
+*  **`dashboard-id`** value must be an integer greater than zero.
 
 ## `DELETE /api/dashboard/:id`
 
 Delete a Dashboard.
 
-### PARAMS:
-
-*  **`id`**
-
-## `DELETE /api/dashboard/:id/cards`
-
-Remove a `DashboardCard` from a Dashboard.
+  This will remove also any questions/models/segments/metrics that use this database.
 
 ### PARAMS:
 
-*  **`id`** 
-
-*  **`dashcardId`** value must be a valid integer greater than zero.
+*  **`id`** value must be an integer greater than zero.
 
 ## `GET /api/dashboard/`
 
@@ -71,13 +38,25 @@ Get `Dashboards`. With filter option `f` (default `all`), restrict results as fo
 
 *  **`f`** value may be nil, or if non-nil, value must be one of: `all`, `archived`, `mine`.
 
+## `GET /api/dashboard/:dashboard-id/dashcard/:dashcard-id/execute`
+
+Fetches the values for filling in execution parameters. Pass PK parameters and values to select.
+
+### PARAMS:
+
+*  **`dashboard-id`** value must be an integer greater than zero.
+
+*  **`dashcard-id`** value must be an integer greater than zero.
+
+*  **`parameters`** value must be a valid JSON string.
+
 ## `GET /api/dashboard/:id`
 
 Get Dashboard with ID.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `GET /api/dashboard/:id/params/:param-key/search/:query`
 
@@ -92,7 +71,7 @@ Fetch possible values of the parameter whose ID is `:param-key` that contain `:q
 
 ### PARAMS:
 
-*  **`id`** 
+*  **`id`** value must be an integer greater than zero.
 
 *  **`param-key`** 
 
@@ -102,15 +81,15 @@ Fetch possible values of the parameter whose ID is `:param-key` that contain `:q
 
 ## `GET /api/dashboard/:id/params/:param-key/values`
 
-Fetch possible values of the parameter whose ID is `:param-key`. Optionally restrict these values by passing query
-  parameters like `other-parameter=value` e.g.
+Fetch possible values of the parameter whose ID is `:param-key`. If the values come directly from a query, optionally
+  restrict these values by passing query parameters like `other-parameter=value` e.g.
 
     ;; fetch values for Dashboard 1 parameter 'abc' that are possible when parameter 'def' is set to 100
     GET /api/dashboard/1/params/abc/values?def=100.
 
 ### PARAMS:
 
-*  **`id`** 
+*  **`id`** value must be an integer greater than zero.
 
 *  **`param-key`** 
 
@@ -122,7 +101,7 @@ Return related entities.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `GET /api/dashboard/:id/revisions`
 
@@ -130,7 +109,7 @@ Fetch `Revisions` for Dashboard with ID.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `GET /api/dashboard/embeddable`
 
@@ -227,6 +206,30 @@ Run the query associated with a Saved Question (`Card`) in the context of a `Das
 
 *  **`request-parameters`**
 
+## `POST /api/dashboard/:dashboard-id/dashcard/:dashcard-id/execute`
+
+Execute the associated Action in the context of a `Dashboard` and `DashboardCard` that includes it.
+
+   `parameters` should be the mapped dashboard parameters with values.
+   `extra_parameters` should be the extra, user entered parameter values.
+
+### PARAMS:
+
+*  **`dashboard-id`** value must be an integer greater than zero.
+
+*  **`dashcard-id`** value must be an integer greater than zero.
+
+*  **`parameters`** value may be nil, or if non-nil, value must be a map with schema: (
+  value must be a map with schema: (
+    p? : 
+    pred-name : 
+  ) : value must be a map with schema: (
+    _ : 
+  )
+)
+
+*  **`_body`**
+
 ## `POST /api/dashboard/:dashboard-id/public_link`
 
 Generate publicly-accessible links for this Dashboard. Returns UUID to be used in public links. (If this
@@ -237,7 +240,7 @@ You must be a superuser to do this.
 
 ### PARAMS:
 
-*  **`dashboard-id`**
+*  **`dashboard-id`** value must be an integer greater than zero.
 
 ## `POST /api/dashboard/:from-dashboard-id/copy`
 
@@ -245,31 +248,19 @@ Copy a Dashboard.
 
 ### PARAMS:
 
-*  **`from-dashboard-id`** 
+*  **`from-dashboard-id`** nullable value must be an integer greater than zero.
 
-*  **`name`** value may be nil, or if non-nil, value must be a non-blank string.
+*  **`name`** nullable value must be a non-blank string.
 
-*  **`description`** value may be nil, or if non-nil, value must be a string.
+*  **`description`** nullable string
 
-*  **`collection_id`** value may be nil, or if non-nil, value must be an integer greater than zero.
+*  **`collection_id`** nullable value must be an integer greater than zero.
 
-*  **`collection_position`** value may be nil, or if non-nil, value must be an integer greater than zero.
+*  **`collection_position`** nullable value must be an integer greater than zero.
+
+*  **`is_deep_copy`** nullable boolean
 
 *  **`_dashboard`**
-
-## `POST /api/dashboard/:id/cards`
-
-Add a `Card` to a Dashboard.
-
-### PARAMS:
-
-*  **`id`** 
-
-*  **`cardId`** value may be nil, or if non-nil, value must be an integer greater than zero.
-
-*  **`parameter_mappings`** value may be nil, or if non-nil, value must be an array.
-
-*  **`dashboard-card`**
 
 ## `POST /api/dashboard/:id/revert`
 
@@ -277,7 +268,7 @@ Revert a Dashboard to a prior `Revision`.
 
 ### PARAMS:
 
-*  **`id`** 
+*  **`id`** value must be an integer greater than zero.
 
 *  **`revision_id`** value must be an integer greater than zero.
 
@@ -309,7 +300,7 @@ Save a denormalized description of dashboard into collection with ID `:parent-co
 
 ### PARAMS:
 
-*  **`parent-collection-id`** 
+*  **`parent-collection-id`** value must be an integer greater than zero.
 
 *  **`dashboard`**
 
@@ -355,23 +346,27 @@ Update a Dashboard.
 
 ## `PUT /api/dashboard/:id/cards`
 
-Update `Cards` on a Dashboard. Request body should have the form:
+Update `Cards` and `Tabs` on a Dashboard. Request body should have the form:
 
-    {:cards [{:id                 ... ; DashboardCard ID
-              :sizeX              ...
-              :sizeY              ...
-              :row                ...
-              :col                ...
-              :parameter_mappings ...
-              :series             [{:id 123
-                                    ...}]}
-             ...]}.
+    {:cards        [{:id                 ... ; DashboardCard ID
+                     :size_x             ...
+                     :size_y             ...
+                     :row                ...
+                     :col                ...
+                     :parameter_mappings ...
+                     :series             [{:id 123
+                                           ...}]}
+                     ...]
+     :ordered_tabs [{:id       ... ; DashboardTab ID
+                     :name     ...}]}.
 
 ### PARAMS:
 
-*  **`id`** 
+*  **`id`** value must be an integer greater than zero.
 
-*  **`cards`** value must be an array. Each value must be a valid DashboardCard map. The array cannot be empty.
+*  **`cards`** value must be seq of maps in which ids are unique
+
+*  **`ordered_tabs`** nullable value must be seq of maps in which ids are unique
 
 ---
 

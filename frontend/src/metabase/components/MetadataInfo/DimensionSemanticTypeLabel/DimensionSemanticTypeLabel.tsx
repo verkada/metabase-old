@@ -1,4 +1,3 @@
-import React from "react";
 import PropTypes from "prop-types";
 import { t } from "ttag";
 
@@ -6,7 +5,7 @@ import {
   getSemanticTypeIcon,
   getSemanticTypeName,
 } from "metabase/lib/schema_metadata";
-import Dimension from "metabase-lib/lib/Dimension";
+import Dimension from "metabase-lib/Dimension";
 
 import {
   LabelContainer,
@@ -24,6 +23,7 @@ type Props = {
   dimension: Dimension;
 };
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default function DimensionSemanticTypeLabel({
   className,
   dimension,

@@ -1,7 +1,5 @@
-import React from "react";
-import _ from "underscore";
+import { Icon, IconName } from "metabase/core/components/Icon";
 
-import Icon from "metabase/components/Icon";
 import { TabBar, Tab, RadioInput } from "./EditorTabs.styled";
 
 type Props = {
@@ -9,7 +7,8 @@ type Props = {
   options: {
     id: string;
     name: string;
-    icon: string;
+    icon: IconName;
+    disabled?: boolean;
   }[];
   onChange: (optionId: string) => void;
 };
@@ -25,7 +24,12 @@ function EditorTabs({ currentTab, options, onChange, ...props }: Props) {
         const labelId = `${id}-label`;
         return (
           <li key={option.id}>
-            <Tab id={labelId} htmlFor={id} selected={selected}>
+            <Tab
+              id={labelId}
+              htmlFor={id}
+              selected={selected}
+              disabled={option.disabled}
+            >
               <Icon name={option.icon} />
               <RadioInput
                 id={id}
@@ -36,6 +40,8 @@ function EditorTabs({ currentTab, options, onChange, ...props }: Props) {
                   onChange(option.id);
                 }}
                 aria-labelledby={labelId}
+                disabled={option.disabled}
+                data-testid={id}
               />
               <span data-testid={`${id}-name`}>{option.name}</span>
             </Tab>
@@ -46,4 +52,5 @@ function EditorTabs({ currentTab, options, onChange, ...props }: Props) {
   );
 }
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default EditorTabs;

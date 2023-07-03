@@ -1,12 +1,14 @@
 (ns metabase.domain-entities.core
-  (:require [clojure.string :as str]
-            [medley.core :as m]
-            [metabase.domain-entities.specs :refer [domain-entity-specs MBQL]]
-            [metabase.mbql.util :as mbql.u]
-            [metabase.models.card :refer [Card]]
-            [metabase.models.table :as table :refer [Table]]
-            [metabase.util :as u]
-            [schema.core :as s]))
+  (:require
+   [clojure.string :as str]
+   [medley.core :as m]
+   [metabase.domain-entities.specs :refer [domain-entity-specs MBQL]]
+   [metabase.mbql.util :as mbql.u]
+   [metabase.models.card :refer [Card]]
+   [metabase.models.interface :as mi]
+   [metabase.models.table :as table :refer [Table]]
+   [metabase.util :as u]
+   [schema.core :as s]))
 
 (def ^:private ^{:arglists '([field])} field-type
   "Return the most specific type of a given field."
@@ -24,10 +26,11 @@
 
 (def SourceEntity
   "A source for a card. Can be either a table or another card."
-  (s/cond-pre (type Table) (type Card)))
+  (s/cond-pre (mi/InstanceOf Table) (mi/InstanceOf Card)))
 
 (def Bindings
-  "Top-level lexical context mapping source names to their corresponding entity and constituent dimensions. See also `DimensionBindings`."
+  "Top-level lexical context mapping source names to their corresponding entity and constituent dimensions. See also
+  `DimensionBindings`."
   {SourceName {(s/optional-key :entity)     SourceEntity
                (s/required-key :dimensions) DimensionBindings}})
 

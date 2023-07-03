@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import crossfilter from "crossfilter";
 import d3 from "d3";
 import dc from "dc";
@@ -7,7 +6,13 @@ import { assocIn, updateIn } from "icepick";
 import { t } from "ttag";
 import { lighten } from "metabase/lib/colors";
 
-import Question from "metabase-lib/lib/Question";
+import { keyForSingleSeries } from "metabase/visualizations/lib/settings/series";
+import {
+  updateDateTimeFilter,
+  updateNumericFilter,
+} from "metabase-lib/queries/utils/actions";
+import { isStructured } from "metabase-lib/queries/utils/card";
+import Question from "metabase-lib/Question";
 
 import {
   computeSplit,
@@ -29,8 +34,6 @@ import { getTrendDataPointsFromInsight } from "./trends";
 
 import fillMissingValuesInDatas from "./fill_data";
 import { NULL_DIMENSION_WARNING, unaggregatedDataWarning } from "./warnings";
-
-import { keyForSingleSeries } from "metabase/visualizations/lib/settings/series";
 
 import {
   forceSortedGroupsOfGroups,
@@ -55,16 +58,10 @@ import {
   isMultiCardSeries,
   hasClickBehavior,
   replaceNullValuesForOrdinal,
+  shouldSplitYAxis,
 } from "./renderer_utils";
 
 import lineAndBarOnRender from "./LineAreaBarPostRender";
-
-import { isStructured } from "metabase/meta/Card";
-
-import {
-  updateDateTimeFilter,
-  updateNumericFilter,
-} from "metabase/modes/lib/actions";
 
 import { lineAddons } from "./graph/addons";
 import { initBrush } from "./graph/brush";
@@ -293,15 +290,12 @@ function getYAxisSplit(
     }
   }
 
-  // don't auto-split if the metric columns are all identical, i.e. it's a breakout multiseries
-  const hasDifferentYAxisColumns =
-    _.uniq(series.map(s => JSON.stringify(s.data.cols[1]))).length > 1;
   if (
-    !isScalarSeries &&
-    chartType !== "scatter" &&
-    !isStacked(settings, datas) &&
-    hasDifferentYAxisColumns &&
-    settings["graph.y_axis.auto_split"] !== false
+    shouldSplitYAxis(
+      { settings, chartType, isScalarSeries, series },
+      datas,
+      yExtents,
+    )
   ) {
     // NOTE: this version computes the split after assigning fixed left/right
     // which causes other series to move around when changing the setting
@@ -446,8 +440,8 @@ function applyChartLineBarSettings(
 
 const BUBBLE_SIZE_INDEX = 2;
 
-const getBubbleSizeMaxDomain = (datas, seriesIndex) => {
-  const seriesData = datas[seriesIndex];
+const getBubbleSizeMaxDomain = datas => {
+  const seriesData = datas.flat();
   const sizeValues = seriesData.map(data => data[BUBBLE_SIZE_INDEX]);
   return d3.max(sizeValues);
 };
@@ -457,7 +451,7 @@ function configureScatterChart(chart, datas, index) {
 
   if (chart.radiusValueAccessor) {
     const hasBubbleRadiusValues = datas[index][0].length > BUBBLE_SIZE_INDEX;
-    const bubbleSizeMaxDomain = getBubbleSizeMaxDomain(datas, index);
+    const bubbleSizeMaxDomain = getBubbleSizeMaxDomain(datas);
 
     if (hasBubbleRadiusValues) {
       const BUBBLE_SCALE_FACTOR_MAX = 64;

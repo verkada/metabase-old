@@ -1,21 +1,19 @@
-/* eslint-disable react/prop-types */
-import React, { useMemo } from "react";
-import PropTypes from "prop-types";
+import { Fragment, useMemo } from "react";
 import { t } from "ttag";
 
 import { isAdminGroup, isDefaultGroup } from "metabase/lib/groups";
 import { getFullName } from "metabase/lib/user";
-import Icon from "metabase/components/Icon";
-import AdminEmptyText from "metabase/components/AdminEmptyText";
+import { Icon } from "metabase/core/components/Icon";
 import AdminContentTable from "metabase/components/AdminContentTable";
 import PaginationControls from "metabase/components/PaginationControls";
 
 import User from "metabase/entities/users";
 
-import AddMemberRow from "../AddMemberRow";
 import { Group, Member, User as IUser } from "metabase-types/api";
 import { PLUGIN_GROUP_MANAGERS } from "metabase/plugins";
 import { State } from "metabase-types/store";
+import { isNotNull } from "metabase/core/utils/types";
+import AddMemberRow from "../AddMemberRow";
 
 const canEditMembership = (group: Group) =>
   !isDefaultGroup(group) && PLUGIN_GROUP_MANAGERS.UserTypeCell;
@@ -80,7 +78,7 @@ function GroupMembersTable({
     t`Name`,
     canEditMembership(group) ? t`Type` : null,
     t`Email`,
-  ].filter(Boolean);
+  ].filter(isNotNull);
 
   const alreadyMembersIds = useMemo(
     () => new Set(groupMemberships.map(membership => membership.user_id)),
@@ -88,7 +86,7 @@ function GroupMembersTable({
   );
 
   return (
-    <React.Fragment>
+    <Fragment>
       <AdminContentTable columnTitles={columnTitles}>
         {showAddUser && (
           <AddMemberRow
@@ -126,15 +124,14 @@ function GroupMembersTable({
       )}
       {!hasMembers && (
         <div className="mt4 pt4 flex layout-centered">
-          <AdminEmptyText
-            message={t`A group is only as good as its members.`}
-          />
+          <h2 className="text-medium">{t`A group is only as good as its members.`}</h2>
         </div>
       )}
-    </React.Fragment>
+    </Fragment>
   );
 }
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default User.loadList({
   reload: true,
   pageSize: 25,

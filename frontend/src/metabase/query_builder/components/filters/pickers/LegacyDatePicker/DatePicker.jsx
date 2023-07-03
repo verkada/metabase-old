@@ -1,18 +1,17 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
+import { Component } from "react";
 import PropTypes from "prop-types";
 import { t } from "ttag";
 import cx from "classnames";
-import moment from "moment";
+import moment from "moment-timezone";
 import _ from "underscore";
 
-import SpecificDatePicker from "./SpecificDatePicker";
-import RelativeDatePicker, { DATE_PERIODS } from "./RelativeDatePicker";
+import Calendar from "metabase/components/Calendar";
+import { FieldDimension } from "metabase-lib/Dimension";
 import DatePickerSelector from "../DatePicker/DatePickerSelector";
 import DateUnitSelector from "../DatePicker/DateUnitSelector";
-import Calendar from "metabase/components/Calendar";
-
-import { FieldDimension } from "metabase-lib/lib/Dimension";
+import SpecificDatePicker from "./SpecificDatePicker";
+import RelativeDatePicker, { DATE_PERIODS } from "./RelativeDatePicker";
 
 const singleDatePickerPropTypes = {
   className: PropTypes.string,

@@ -1,16 +1,15 @@
-import React, { useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { t } from "ttag";
-
-import StructuredQuery, {
-  SegmentOption,
-} from "metabase-lib/lib/queries/StructuredQuery";
-
-import Filter from "metabase-lib/lib/queries/structured/Filter";
-import Dimension from "metabase-lib/lib/Dimension";
-import { isBoolean, isDate } from "metabase/lib/schema_metadata";
 
 import TippyPopoverWithTrigger from "metabase/components/PopoverWithTrigger/TippyPopoverWithTrigger";
 import { DateShortcutOptions } from "metabase/query_builder/components/filters/pickers/DatePicker/DatePickerShortcutOptions";
+import { isBoolean, isDate } from "metabase-lib/types/utils/isa";
+import StructuredQuery, {
+  SegmentOption,
+} from "metabase-lib/queries/StructuredQuery";
+
+import Filter from "metabase-lib/queries/structured/Filter";
+import Dimension from "metabase-lib/Dimension";
 
 import {
   SelectFilterButton,
@@ -81,6 +80,7 @@ export const BulkFilterSelect = ({
               </SelectFilterButton>
             )
       }
+      maxWidth={370}
       popoverContent={({ closePopover }) => (
         <SelectFilterPopover
           query={query}
@@ -93,7 +93,6 @@ export const BulkFilterSelect = ({
           onChangeFilter={handleChange}
           onClose={closePopover}
           checkedColor="brand"
-          commitOnBlur
         />
       )}
     />
@@ -126,7 +125,7 @@ export const SegmentFilterSelect = ({
   onClearSegments,
 }: SegmentFilterSelectProps): JSX.Element => {
   const activeSegmentOptions = useMemo(() => {
-    const activeSegmentIds = query.segments().map(s => s.id);
+    const activeSegmentIds = query.segments().map(s => s?.id);
     return segments.filter(segment =>
       activeSegmentIds.includes(segment.filter[1]),
     );

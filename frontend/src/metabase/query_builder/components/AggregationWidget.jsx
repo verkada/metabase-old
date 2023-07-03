@@ -1,16 +1,16 @@
 /* eslint-disable react/prop-types */
-import React from "react";
+import { Component } from "react";
 import PropTypes from "prop-types";
 import { t } from "ttag";
 
+import ControlledPopoverWithTrigger from "metabase/components/PopoverWithTrigger/ControlledPopoverWithTrigger";
+import { isRows } from "metabase-lib/queries/utils/aggregation";
 import Clearable from "./Clearable";
 import AggregationPopover from "./AggregationPopover";
-import ControlledPopoverWithTrigger from "metabase/components/PopoverWithTrigger/ControlledPopoverWithTrigger";
 import { AggregationLabel } from "./AggregationWidget.styled";
-
 // NOTE: lots of duplication between AggregationWidget and BreakoutWidget
 
-export default class AggregationWidget extends React.Component {
+export default class AggregationWidget extends Component {
   constructor(props, context) {
     super(props, context);
 
@@ -73,6 +73,7 @@ export default class AggregationWidget extends React.Component {
       <ControlledPopoverWithTrigger
         disableContentSandbox
         placement="bottom-start"
+        maxWidth={450}
         visible={this.state.isOpen}
         onClose={this.handleClose}
         onOpen={this.handleOpen}
@@ -91,5 +92,3 @@ export default class AggregationWidget extends React.Component {
     );
   }
 }
-
-const isRows = aggregation => aggregation && aggregation[0] === "rows";

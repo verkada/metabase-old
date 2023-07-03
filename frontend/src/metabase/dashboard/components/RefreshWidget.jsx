@@ -1,11 +1,10 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
+import { createRef, Component } from "react";
 
-import PopoverWithTrigger from "metabase/components/PopoverWithTrigger";
-import Tooltip from "metabase/components/Tooltip";
-import ClockIcon from "metabase/components/icons/ClockIcon";
-import CountdownIcon from "metabase/components/icons/CountdownIcon";
 import { t } from "ttag";
+import PopoverWithTrigger from "metabase/components/PopoverWithTrigger";
+import Tooltip from "metabase/core/components/Tooltip";
+import CountdownIcon from "metabase/components/icons/CountdownIcon";
 
 import { DashboardHeaderButton } from "metabase/dashboard/containers/DashboardHeader.styled";
 import {
@@ -29,7 +28,7 @@ export default class RefreshWidget extends Component {
   constructor(props) {
     super(props);
 
-    this.popover = React.createRef();
+    this.popover = createRef();
   }
   state = { elapsed: null };
 
@@ -51,7 +50,7 @@ export default class RefreshWidget extends Component {
   }
 
   render() {
-    const { period, onChangePeriod, className } = this.props;
+    const { period, onChangePeriod } = this.props;
     const { elapsed } = this.state;
     const remaining = period - elapsed;
     return (
@@ -60,9 +59,7 @@ export default class RefreshWidget extends Component {
         triggerElement={
           elapsed == null ? (
             <Tooltip tooltip={t`Auto-refresh`}>
-              <DashboardHeaderButton>
-                <ClockIcon width={16} height={16} className={className} />
-              </DashboardHeaderButton>
+              <DashboardHeaderButton icon="clock" />
             </Tooltip>
           ) : (
             <Tooltip
@@ -75,13 +72,15 @@ export default class RefreshWidget extends Component {
                 Math.round(remaining % 60)
               }
             >
-              <DashboardHeaderButton>
-                <CountdownIcon
-                  width={18}
-                  height={18}
-                  percent={Math.min(0.95, (period - elapsed) / period)}
-                />
-              </DashboardHeaderButton>
+              <DashboardHeaderButton
+                icon={
+                  <CountdownIcon
+                    width={16}
+                    height={16}
+                    percent={Math.min(0.95, (period - elapsed) / period)}
+                  />
+                }
+              />
             </Tooltip>
           )
         }
@@ -117,7 +116,7 @@ const RefreshOption = ({ name, period, selected, onClick }) => (
     isSelected={selected}
     onClick={onClick}
   >
-    <RefreshOptionIcon name="check" size={14} />
+    <RefreshOptionIcon name="check" />
     <span>{name.split(" ")[0]}</span>
     <span>{name.split(" ")[1]}</span>
   </RefreshOptionItem>

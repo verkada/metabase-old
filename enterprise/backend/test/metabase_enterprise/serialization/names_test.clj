@@ -1,10 +1,12 @@
 (ns metabase-enterprise.serialization.names-test
-  (:require [clojure.test :refer :all]
-            [metabase-enterprise.serialization.names :as names]
-            [metabase-enterprise.serialization.test-util :as ts]
-            [metabase.models :refer [Card Collection Dashboard Database Field Metric NativeQuerySnippet Segment Table]]
-            [metabase.test :as mt]
-            [metabase.util :as u]))
+  (:require
+   [clojure.test :refer :all]
+   [metabase-enterprise.serialization.names :as names]
+   [metabase-enterprise.serialization.test-util :as ts]
+   [metabase.models :refer [Card Collection Dashboard Database Field Metric NativeQuerySnippet Segment Table]]
+   [metabase.test :as mt]
+   [metabase.util :as u]
+   [toucan2.core :as t2]))
 
 (deftest safe-name-test
   (are [s expected] (= (names/safe-name {:name s}) expected)
@@ -23,18 +25,18 @@
 
 (deftest roundtrip-test
   (ts/with-world
-    (doseq [object [(Card card-id-root)
-                    (Card card-id)
-                    (Card card-id-nested)
-                    (Table table-id)
-                    (Field category-field-id)
-                    (Metric metric-id)
-                    (Segment segment-id)
-                    (Collection collection-id)
-                    (Collection collection-id-nested)
-                    (Dashboard dashboard-id)
-                    (Database db-id)
-                    (NativeQuerySnippet snippet-id)]]
+    (doseq [object [(t2/select-one Card :id card-id-root)
+                    (t2/select-one Card :id card-id)
+                    (t2/select-one Card :id card-id-nested)
+                    (t2/select-one Table :id table-id)
+                    (t2/select-one Field :id category-field-id)
+                    (t2/select-one Metric :id metric-id)
+                    (t2/select-one Segment :id segment-id)
+                    (t2/select-one Collection :id collection-id)
+                    (t2/select-one Collection :id collection-id-nested)
+                    (t2/select-one Dashboard :id dashboard-id)
+                    (t2/select-one Database :id db-id)
+                    (t2/select-one NativeQuerySnippet :id snippet-id)]]
       (testing (class object)
         (let [context (names/fully-qualified-name->context (names/fully-qualified-name object))
               id-fn   (some-fn :snippet :field :metric :segment :card :dashboard :collection :table :database)]
@@ -50,10 +52,10 @@
                                                    :collection_id collection-id}]
                       Collection [{sub-collection-id :id :as coll2} {:name "Sub Collection"
                                                                      :location (format "/%d/" collection-id)}]
-                      Collection [{deep-collection-id :id :as coll3} {:name "Deep Collection"
-                                                                      :location (format "/%d/%d/"
-                                                                                        collection-id
-                                                                                        sub-collection-id)}]]
+                      Collection [coll3 {:name "Deep Collection"
+                                         :location (format "/%d/%d/"
+                                                           collection-id
+                                                           sub-collection-id)}]]
         (let [card1-name "/collections/root/cards/Root Card"
               card2-name "/collections/root/collections/A Collection/cards/Collection Card"
               coll-name  "/collections/root/collections/A Collection"
@@ -86,7 +88,7 @@
       ; these drivers keep table names lowercased, causing "users" table to clash with our entity name "users"
       (mt/test-drivers #{:postgres :mysql}
         (ts/with-world
-          (let [users-pk-field (Field users-pk-field-id)
+          (let [users-pk-field (t2/select-one Field :id users-pk-field-id)
                 fq-name        (names/fully-qualified-name users-pk-field)
                 ctx            (names/fully-qualified-name->context fq-name)]
             ;; MySQL doesn't have schemas, so either one of these could be acceptable
@@ -94,3 +96,12 @@
                              "/databases/Fingerprint test-data copy/schemas/public/tables/users/fields/id"} fq-name))
             (is (map? ctx))
             (is (some? (:table ctx)))))))))
+
+(deftest name-for-logging-test
+  (testing "serialization logging name generation from Toucan 2 records (#29322)"
+    (mt/with-temp* [Collection [{collection-id :id} {:name         "A Collection"}]
+                    Card       [{card-id :id}       {:name         "A Card"
+                                                     :collection_id collection-id}]]
+      (are [model s id] (= (format s id) (names/name-for-logging (t2/select-one model :id id)))
+        'Collection ":model/Collection \"A Collection\" (ID %d)" collection-id
+        'Card       ":model/Card \"A Card\" (ID %d)" card-id))))

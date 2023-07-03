@@ -1,11 +1,10 @@
-import React from "react";
 import PropTypes from "prop-types";
 import { hideAll } from "tippy.js";
 
-import Dimension from "metabase-lib/lib/Dimension";
 import TippyPopover, {
   ITippyPopoverProps,
 } from "metabase/components/Popover/TippyPopover";
+import Dimension from "metabase-lib/Dimension";
 
 import { WidthBoundDimensionInfo } from "./DimensionInfoPopover.styled";
 
@@ -66,4 +65,5 @@ function DimensionInfoPopover({
 
 DimensionInfoPopover.propTypes = propTypes;
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default DimensionInfoPopover;

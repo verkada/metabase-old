@@ -1,17 +1,19 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
+import { Component } from "react";
 import { t, jt } from "ttag";
 import cx from "classnames";
 import _ from "underscore";
 
 import ErrorMessage from "metabase/components/ErrorMessage";
 import Visualization from "metabase/visualizations/components/Visualization";
-import { datasetContainsNoResults } from "metabase/lib/dataset";
 import { CreateAlertModalContent } from "metabase/query_builder/components/AlertModals";
 import Modal from "metabase/components/Modal";
-import { ALERT_TYPE_ROWS } from "metabase-lib/lib/Alert";
+import { datasetContainsNoResults } from "metabase-lib/queries/utils/dataset";
+import { ALERT_TYPE_ROWS } from "metabase-lib/Alert";
 
 const ALLOWED_VISUALIZATION_PROPS = [
+  // Table
+  "isShowingDetailsOnlyColumns",
   // Table Interactive
   "hasMetadataPopovers",
   "tableHeaderHeight",
@@ -72,7 +74,11 @@ export default class VisualizationResult extends Component {
                 {supportsRowsPresentAlert && !isDirty && (
                   <p>
                     {jt`You can also ${(
-                      <a className="link" onClick={this.showCreateAlertModal}>
+                      <a
+                        className="link"
+                        key="link"
+                        onClick={this.showCreateAlertModal}
+                      >
                         {t`get an alert`}
                       </a>
                     )} when there are some results.`}

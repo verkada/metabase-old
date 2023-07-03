@@ -2,49 +2,46 @@
   "Dimensions are used to define remappings for Fields handled automatically when those Fields are encountered by the
   Query Processor. For a more detailed explanation, refer to the documentation in
   `metabase.query-processor.middleware.add-dimension-projections`."
-  (:require [metabase.models.serialization.base :as serdes.base]
-            [metabase.models.serialization.hash :as serdes.hash]
-            [metabase.models.serialization.util :as serdes.util]
-            [metabase.util :as u]
-            [toucan.models :as models]))
+  (:require
+   [metabase.models.interface :as mi]
+   [metabase.models.serialization :as serdes]
+   [metabase.util.date-2 :as u.date]
+   [methodical.core :as methodical]
+   [toucan2.core :as t2]))
 
-(def dimension-types
-  "Possible values for `Dimension.type`"
-  #{:internal
-    :external})
+;;; Possible values for Dimension.type :
+;;;
+;;; :internal
+;;; :external
 
-(models/defmodel Dimension :dimension)
+(def Dimension
+  "Used to be the toucan1 model name defined using [[toucan.models/defmodel]], now it's a reference to the toucan2 model name.
+  We'll keep this till we replace all the symbols in our codebase."
+  :model/Dimension)
 
-(u/strict-extend (class Dimension)
-  models/IModel
-  (merge models/IModelDefaults
-         {:types      (constantly {:type :keyword})
-          :properties (constantly {:timestamped? true
-                                   :entity_id    true})})
+(methodical/defmethod t2/table-name :model/Dimension [_model] :dimension)
 
-  serdes.hash/IdentityHashable
-  {:identity-hash-fields (constantly [(serdes.hash/hydrated-hash :field)
-                                      (serdes.hash/hydrated-hash :human_readable_field)])})
+(doto :model/Dimension
+  (derive :metabase/model)
+  (derive :hook/entity-id)
+  (derive :hook/timestamped?))
+
+(t2/deftransforms :model/Dimension
+  {:type mi/transform-keyword})
+
+(defmethod serdes/hash-fields :model/Dimension
+  [_dimension]
+  [(serdes/hydrated-hash :field)
+   (serdes/hydrated-hash :human_readable_field)
+   :created_at])
 
 ;;; ------------------------------------------------- Serialization --------------------------------------------------
-(defmethod serdes.base/extract-one "Dimension"
-  [_model-name _opts dim]
-  ;; The field IDs are converted to {:field [db schema table field]} portable values.
-  (-> (serdes.base/extract-one-basics "Dimension" dim)
-      (update :field_id serdes.util/export-field-fk)
-      (update :human_readable_field_id #(some-> % serdes.util/export-field-fk))))
-
-(defmethod serdes.base/load-xform "Dimension"
+;; Dimensions are inlined onto their parent Fields.
+;; We can reuse the [[serdes/load-one!]] logic by implementing [[serdes/load-xform]] though.
+(defmethod serdes/load-xform "Dimension"
   [dim]
   (-> dim
-      serdes.base/load-xform-basics
-      (update :field_id serdes.util/import-field-fk)
-      (update :human_readable_field_id #(some-> % serdes.util/import-field-fk))))
-
-(defmethod serdes.base/serdes-dependencies "Dimension"
-  [{:keys [field_id human_readable_field_id]}]
-  ;; The Field depends on the Table, and Table on the Database.
-  (let [base  (serdes.util/field->path field_id)]
-    (if-let [human (some-> human_readable_field_id serdes.util/field->path)]
-      [base human]
-      [base])))
+      serdes/load-xform-basics
+      ;; No need to handle :field_id, it was just added as the raw ID by the caller; see Field's load-one!
+      (update            :human_readable_field_id serdes/*import-field-fk*)
+      (update            :created_at              u.date/parse)))

@@ -1,13 +1,19 @@
-import React, { ReactNode, useCallback, useMemo, useState } from "react";
+import { ReactNode, useCallback, useMemo, useState } from "react";
 import { t } from "ttag";
-import * as Urls from "metabase/lib/urls";
+import type { LocationDescriptor } from "history";
+
 import Modal from "metabase/components/Modal";
 import EntityMenu from "metabase/components/EntityMenu";
-import CreateDashboardModal from "metabase/components/CreateDashboardModal";
-import CollectionCreate from "metabase/collections/containers/CollectionCreate";
-import { Collection, CollectionId } from "metabase-types/api";
 
-type ModalType = "new-dashboard" | "new-collection";
+import * as Urls from "metabase/lib/urls";
+
+import ActionCreator from "metabase/actions/containers/ActionCreator";
+import CreateCollectionModal from "metabase/collections/containers/CreateCollectionModal";
+import CreateDashboardModal from "metabase/dashboard/containers/CreateDashboardModal";
+
+import type { CollectionId, WritebackAction } from "metabase-types/api";
+
+type ModalType = "new-action" | "new-dashboard" | "new-collection";
 
 export interface NewItemMenuProps {
   className?: string;
@@ -16,12 +22,23 @@ export interface NewItemMenuProps {
   triggerIcon?: string;
   triggerTooltip?: string;
   analyticsContext?: string;
+  hasModels: boolean;
   hasDataAccess: boolean;
   hasNativeWrite: boolean;
   hasDatabaseWithJsonEngine: boolean;
-  onChangeLocation: (location: string) => void;
+  hasDatabaseWithActionsEnabled: boolean;
   onCloseNavbar: () => void;
+  onChangeLocation: (nextLocation: LocationDescriptor) => void;
 }
+
+type NewMenuItem = {
+  title: string;
+  icon: string;
+  link?: LocationDescriptor;
+  event?: string;
+  action?: () => void;
+  onClose?: () => void;
+};
 
 const NewItemMenu = ({
   className,
@@ -30,11 +47,13 @@ const NewItemMenu = ({
   triggerIcon,
   triggerTooltip,
   analyticsContext,
+  hasModels,
   hasDataAccess,
   hasNativeWrite,
   hasDatabaseWithJsonEngine,
-  onChangeLocation,
+  hasDatabaseWithActionsEnabled,
   onCloseNavbar,
+  onChangeLocation,
 }: NewItemMenuProps) => {
   const [modal, setModal] = useState<ModalType>();
 
@@ -42,16 +61,16 @@ const NewItemMenu = ({
     setModal(undefined);
   }, []);
 
-  const handleCollectionSave = useCallback(
-    (collection: Collection) => {
-      handleModalClose();
-      onChangeLocation(Urls.collection(collection));
+  const handleActionCreated = useCallback(
+    (action: WritebackAction) => {
+      const nextLocation = Urls.modelDetail({ id: action.model_id }, "actions");
+      onChangeLocation(nextLocation);
     },
-    [handleModalClose, onChangeLocation],
+    [onChangeLocation],
   );
 
   const menuItems = useMemo(() => {
-    const items = [];
+    const items: NewMenuItem[] = [];
 
     if (hasDataAccess) {
       items.push({
@@ -95,15 +114,39 @@ const NewItemMenu = ({
         event: `${analyticsContext};New Collection Click;`,
       },
     );
+    if (hasNativeWrite) {
+      const collectionQuery = collectionId
+        ? `?collectionId=${collectionId}`
+        : "";
+
+      items.push({
+        title: t`Model`,
+        icon: "model",
+        link: `/model/new${collectionQuery}`,
+        event: `${analyticsContext};New Model Click;`,
+        onClose: onCloseNavbar,
+      });
+    }
+
+    if (hasModels && hasDatabaseWithActionsEnabled && hasNativeWrite) {
+      items.push({
+        title: t`Action`,
+        icon: "bolt",
+        action: () => setModal("new-action"),
+        event: `${analyticsContext};New Action Click;`,
+      });
+    }
 
     return items;
   }, [
-    collectionId,
     hasDataAccess,
     hasNativeWrite,
-    hasDatabaseWithJsonEngine,
     analyticsContext,
+    hasModels,
+    hasDatabaseWithActionsEnabled,
+    collectionId,
     onCloseNavbar,
+    hasDatabaseWithJsonEngine,
   ]);
 
   return (
@@ -116,23 +159,39 @@ const NewItemMenu = ({
         tooltip={triggerTooltip}
       />
       {modal && (
-        <Modal onClose={handleModalClose}>
+        <>
           {modal === "new-collection" ? (
-            <CollectionCreate
-              collectionId={collectionId}
-              onClose={handleModalClose}
-              onSaved={handleCollectionSave}
-            />
+            <Modal onClose={handleModalClose}>
+              <CreateCollectionModal
+                collectionId={collectionId}
+                onClose={handleModalClose}
+              />
+            </Modal>
           ) : modal === "new-dashboard" ? (
-            <CreateDashboardModal
-              collectionId={collectionId}
+            <Modal onClose={handleModalClose}>
+              <CreateDashboardModal
+                collectionId={collectionId}
+                onClose={handleModalClose}
+              />
+            </Modal>
+          ) : modal === "new-action" ? (
+            <Modal
+              wide
+              enableTransition={false}
               onClose={handleModalClose}
-            />
+              closeOnClickOutside
+            >
+              <ActionCreator
+                onSubmit={handleActionCreated}
+                onClose={handleModalClose}
+              />
+            </Modal>
           ) : null}
-        </Modal>
+        </>
       )}
     </>
   );
 };
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default NewItemMenu;

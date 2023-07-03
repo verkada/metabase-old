@@ -1,9 +1,9 @@
-import React from "react";
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
-import EntityName from "./EntityName";
 import { renderWithProviders } from "__support__/ui";
+import { createMockEntitiesState } from "__support__/store";
 import { createMockUser } from "metabase-types/api/mocks";
+import EntityName from "./EntityName";
 
 describe("EntityName", () => {
   describe("users", () => {
@@ -15,11 +15,9 @@ describe("EntityName", () => {
         <EntityName entityType="users" entityId={mockUser.id} />,
         {
           storeInitialState: {
-            entities: {
-              users: {
-                [mockUser.id]: mockUser,
-              },
-            },
+            entities: createMockEntitiesState({
+              users: [mockUser],
+            }),
           },
         },
       );

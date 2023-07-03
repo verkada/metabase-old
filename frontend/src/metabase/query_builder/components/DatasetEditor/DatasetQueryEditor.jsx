@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import styled from "@emotion/styled";
 import NativeQueryEditor from "metabase/query_builder/components/NativeQueryEditor";
@@ -17,7 +17,18 @@ const propTypes = {
   height: PropTypes.number.isRequired,
 };
 
-function DatasetQueryEditor({ question: dataset, isActive, height, ...props }) {
+function DatasetQueryEditor({
+  // See below, where we convert the dataset/model question back into a "normal" question
+  // so that we can do question-y things and not dataset-y things within the Notebook editor
+  question: dataset_DO_NOT_USE,
+  isActive,
+  height,
+  ...props
+}) {
+  // Datasets/models by default behave like they are already nested,
+  // so we need to edit the dataset/model question like it is a normal question
+  const question = dataset_DO_NOT_USE.setDataset(false);
+
   const [isResizing, setResizing] = useState(false);
 
   const resizableBoxProps = useMemo(() => {
@@ -53,10 +64,10 @@ function DatasetQueryEditor({ question: dataset, isActive, height, ...props }) {
 
   return (
     <QueryEditorContainer isActive={isActive}>
-      {dataset.isNative() ? (
+      {question.isNative() ? (
         <NativeQueryEditor
           {...props}
-          question={dataset}
+          question={question}
           isInitiallyOpen
           hasTopBar={isActive}
           hasEditingSidebar={isActive}
@@ -71,7 +82,7 @@ function DatasetQueryEditor({ question: dataset, isActive, height, ...props }) {
       ) : (
         <ResizableNotebook
           {...props}
-          question={dataset}
+          question={question}
           isResizing={isResizing}
           resizableBoxProps={resizableBoxProps}
         />
@@ -82,9 +93,4 @@ function DatasetQueryEditor({ question: dataset, isActive, height, ...props }) {
 
 DatasetQueryEditor.propTypes = propTypes;
 
-export default React.memo(
-  DatasetQueryEditor,
-  // should prevent the editor from re-rendering in "metadata" mode
-  // when it's completely covered with the results table
-  (prevProps, nextProps) => prevProps.height === 0 && nextProps.height === 0,
-);
+export default memo(DatasetQueryEditor);

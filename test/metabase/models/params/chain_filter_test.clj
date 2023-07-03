@@ -1,20 +1,22 @@
 (ns metabase.models.params.chain-filter-test
-  (:require [cheshire.core :as json]
-            [clojure.test :refer :all]
-            [metabase.models :refer [Field FieldValues]]
-            [metabase.models.field-values :as field-values]
-            [metabase.models.params.chain-filter :as chain-filter]
-            [metabase.models.params.field-values :as params.field-values]
-            [metabase.test :as mt]
-            [metabase.util :as u]
-            [toucan.db :as db]))
+  (:require
+   [cheshire.core :as json]
+   [clojure.test :refer :all]
+   [metabase.models :refer [Field FieldValues]]
+   [metabase.models.field-values :as field-values]
+   [metabase.models.params.chain-filter :as chain-filter]
+   [metabase.models.params.field-values :as params.field-values]
+   [metabase.test :as mt]
+   [metabase.util :as u]
+   [toucan2.core :as t2]
+   [toucan2.tools.with-temp :as t2.with-temp]))
 
 (defmacro ^:private chain-filter [field field->value & options]
   `(chain-filter/chain-filter
-     (mt/$ids nil ~(symbol (str \% (name field))))
-     (mt/$ids nil ~(into {} (for [[k v] field->value]
-                              [(symbol (str \% k)) v])))
-     ~@options))
+    (mt/$ids nil ~(symbol (str \% (name field))))
+    (mt/$ids nil ~(into {} (for [[k v] field->value]
+                             [(symbol (str \% k)) v])))
+    ~@options))
 
 (defmacro ^:private chain-filter-search [field field->value query & options]
   `(chain-filter/chain-filter-search
@@ -192,29 +194,29 @@
   (mt/dataset airports
     (mt/$ids nil
       (testing "airport -> municipality"
-        (is (= [{:lhs {:table $$airport, :field %airport.municipality-id}
+        (is (= [{:lhs {:table $$airport, :field %airport.municipality_id}
                  :rhs {:table $$municipality, :field %municipality.id}}]
                (#'chain-filter/find-joins (mt/id) $$airport $$municipality))))
       (testing "airport [-> municipality -> region] -> country"
-        (is (= [{:lhs {:table $$airport, :field %airport.municipality-id}
+        (is (= [{:lhs {:table $$airport, :field %airport.municipality_id}
                  :rhs {:table $$municipality, :field %municipality.id}}
-                {:lhs {:table $$municipality, :field %municipality.region-id}
+                {:lhs {:table $$municipality, :field %municipality.region_id}
                  :rhs {:table $$region, :field %region.id}}
-                {:lhs {:table $$region, :field %region.country-id}
+                {:lhs {:table $$region, :field %region.country_id}
                  :rhs {:table $$country, :field %country.id}}]
                (#'chain-filter/find-joins (mt/id) $$airport $$country))))
       (testing "[backwards]"
         (testing "municipality -> airport"
           (is (= [{:lhs {:table $$municipality, :field %municipality.id}
-                   :rhs {:table $$airport, :field %airport.municipality-id}}]
+                   :rhs {:table $$airport, :field %airport.municipality_id}}]
                  (#'chain-filter/find-joins (mt/id) $$municipality $$airport))))
         (testing "country [-> region -> municipality] -> airport"
           (is (= [{:lhs {:table $$country, :field %country.id}
-                   :rhs {:table $$region, :field %region.country-id}}
+                   :rhs {:table $$region, :field %region.country_id}}
                   {:lhs {:table $$region, :field %region.id}
-                   :rhs {:table $$municipality, :field %municipality.region-id}}
+                   :rhs {:table $$municipality, :field %municipality.region_id}}
                   {:lhs {:table $$municipality, :field %municipality.id}
-                   :rhs {:table $$airport, :field %airport.municipality-id}}]
+                   :rhs {:table $$airport, :field %airport.municipality_id}}]
                  (#'chain-filter/find-joins (mt/id) $$country $$airport))))))))
 
 (deftest find-all-joins-test
@@ -227,9 +229,9 @@
     (mt/$ids nil
       (testing "airport [-> municipality] -> region"
         (testing "even though we're joining against the same Table multiple times, duplicate joins should be removed"
-          (is (= [{:lhs {:table $$airport, :field %airport.municipality-id}
+          (is (= [{:lhs {:table $$airport, :field %airport.municipality_id}
                    :rhs {:table $$municipality, :field %municipality.id}}
-                  {:lhs {:table $$municipality, :field %municipality.region-id}
+                  {:lhs {:table $$municipality, :field %municipality.region_id}
                    :rhs {:table $$region, :field %region.id}}]
                  (#'chain-filter/find-all-joins $$airport #{%region.name %municipality.name %region.id}))))))))
 
@@ -468,7 +470,7 @@
             (is (= {:values          ["African" "American" "Artisan"]
                     :has_more_values false}
                    (take-n-values 3 (chain-filter categories.name nil))))
-            (is (= 1 (db/count FieldValues :field_id field-id :type :full)))))
+            (is (= 1 (t2/count FieldValues :field_id field-id :type :full)))))
 
         (testing "should create a linked-filter FieldValues when have constraints"
           ;; make sure we have a clean start
@@ -480,10 +482,10 @@
             (is (= {:values          ["Japanese" "Steakhouse"]
                     :has_more_values false}
                    (chain-filter categories.name {venues.price 4})))
-            (is (= 1 (db/count FieldValues :field_id field-id :type :linked-filter)))))
+            (is (= 1 (t2/count FieldValues :field_id field-id :type :linked-filter)))))
 
         (testing "should do in-memory search with the cached FieldValues when search without constraints"
-          (mt/with-temp-vals-in-db FieldValues (db/select-one-id FieldValues :field_id field-id :type "full") {:values ["Good" "Bad"]}
+          (mt/with-temp-vals-in-db FieldValues (t2/select-one-pk FieldValues :field_id field-id :type "full") {:values ["Good" "Bad"]}
             (is (= {:values          ["Good"]
                     :has_more_values false}
                    (chain-filter-search categories.name nil "ood")))))
@@ -494,23 +496,23 @@
           (testing "should create a linked-filter FieldValues"
             ;; warm up the cache
             (chain-filter categories.name {venues.price 4})
-            (is (= 1 (db/count FieldValues :field_id field-id :type "linked-filter"))))
+            (is (= 1 (t2/count FieldValues :field_id field-id :type "linked-filter"))))
 
           (testing "should search for the values of linked-filter FieldValues"
-            (db/update-where! FieldValues {:field_id field-id
-                                           :type     "linked-filter"}
-                              :values (json/generate-string ["Good" "Bad"])
-                              ;; HACK: currently this is hardcoded to true for linked-filter
-                              ;; in [[params.field-values/fetch-advanced-field-values]]
-                              ;; we want this to false to test this case
-                              :has_more_values false)
+            (t2/update! FieldValues {:field_id field-id
+                                     :type     "linked-filter"}
+                        {:values (json/generate-string ["Good" "Bad"])
+                         ;; HACK: currently this is hardcoded to true for linked-filter
+                         ;; in [[params.field-values/fetch-advanced-field-values]]
+                         ;; we want this to false to test this case
+                         :has_more_values false})
             (is (= {:values          ["Good"]
                     :has_more_values false}
                    (chain-filter-search categories.name {venues.price 4} "o")))
             (testing "Shouldn't use cached FieldValues if has_more_values=true"
-              (db/update-where! FieldValues {:field_id field-id
-                                             :type     "linked-filter"}
-                                :has_more_values true)
+              (t2/update! FieldValues {:field_id field-id
+                                       :type     "linked-filter"}
+                          {:has_more_values true})
               (is (= {:values          ["Steakhouse"]
                       :has_more_values false}
                      (chain-filter-search categories.name {venues.price 4} "o"))))))))))
@@ -550,7 +552,7 @@
           (testing "no FieldValues"
             (thunk))
           (testing "with FieldValues for myfield"
-            (mt/with-temp FieldValues [_ {:field_id %myfield, :values ["value" nil ""]}]
+            (t2.with-temp/with-temp [FieldValues _ {:field_id %myfield, :values ["value" nil ""]}]
               (mt/with-temp-vals-in-db Field %myfield {:has_field_values "auto-list"}
                 (testing "Sanity check: make sure we will actually use the cached FieldValues"
                   (is (field-values/field-should-have-field-values? %myfield))
@@ -561,17 +563,17 @@
   [field-or-field-id thunk]
   (mt/with-model-cleanup [FieldValues]
     (let [field-id         (u/the-id field-or-field-id)
-          has_field_values (db/select-one-field :has_field_values Field :id field-id)
-          fvs              (db/select FieldValues :field_id field-id)]
+          has_field_values (t2/select-one-fn :has_field_values Field :id field-id)
+          fvs              (t2/select FieldValues :field_id field-id)]
       ;; switch to "list" to prevent [[field-values/create-or-update-full-field-values!]]
       ;; from changing this to `nil` if the field is `auto-list` and exceeds threshholds
-      (db/update! Field field-id :has_field_values "list")
-      (db/delete! FieldValues :field_id field-id)
+      (t2/update! Field field-id {:has_field_values "list"})
+      (t2/delete! FieldValues :field_id field-id)
       (try
         (thunk)
         (finally
-         (db/update! Field field-id :has_field_values has_field_values)
-         (db/insert-many! FieldValues fvs))))))
+         (t2/update! Field field-id {:has_field_values has_field_values})
+         (t2/insert! FieldValues fvs))))))
 
 (defmacro ^:private with-clean-field-values-for-field
   "Run `body` with all FieldValues for `field-id` deleted.

@@ -1,17 +1,20 @@
 (ns metabase.server.middleware.auth-test
-  (:require [clojure.test :refer :all]
-            [java-time :as t]
-            [metabase.models.session :refer [Session]]
-            [metabase.server.middleware.auth :as mw.auth]
-            [metabase.server.middleware.session :as mw.session]
-            [metabase.server.middleware.util :as mw.util]
-            [metabase.test :as mt]
-            [metabase.test.data.users :as test.users]
-            [metabase.test.fixtures :as fixtures]
-            [ring.mock.request :as ring.mock]
-            [toucan.db :as db]
-            [toucan.util.test :as tt])
-  (:import java.util.UUID))
+  (:require
+   [clojure.test :refer :all]
+   [java-time :as t]
+   [metabase.models.session :refer [Session]]
+   [metabase.server.middleware.auth :as mw.auth]
+   [metabase.server.middleware.session :as mw.session]
+   [metabase.server.middleware.util :as mw.util]
+   [metabase.test :as mt]
+   [metabase.test.data.users :as test.users]
+   [metabase.test.fixtures :as fixtures]
+   [ring.mock.request :as ring.mock]
+   [toucan2.core :as t2])
+  (:import
+   (java.util UUID)))
+
+(set! *warn-on-reflection* true)
 
 (use-fixtures :once (fixtures/initialize :db :test-users :web-server))
 
@@ -38,11 +41,13 @@
 (deftest wrap-current-user-info-test
   (testing "Valid requests should add `metabase-user-id` to requests with valid session info"
     (let [session-id (random-session-id)]
-      (tt/with-temp Session [_ {:id      session-id
-                                :user_id (test.users/user->id :rasta)}]
+      (try
+        (t2/insert! Session {:id      session-id
+                             :user_id (test.users/user->id :rasta)})
         (is (= (test.users/user->id :rasta)
                (-> (auth-enforced-handler (request-with-session-id session-id))
-                   :metabase-user-id))))))
+                   :metabase-user-id)))
+        (finally (t2/delete! Session :id session-id)))))
 
   (testing "Invalid requests should return unauthed response"
     (testing "when no session ID is sent with request"
@@ -54,23 +59,27 @@
       ;; create a new session (specifically created some time in the past so it's EXPIRED) should fail due to session
       ;; expiration
       (let [session-id (random-session-id)]
-        (tt/with-temp Session [_ {:id      session-id
-                                  :user_id (test.users/user->id :rasta)}]
-          (db/update-where! Session {:id session-id}
-            :created_at (t/instant 0))
+        (try
+          (t2/insert! Session {:id      session-id
+                               :user_id (test.users/user->id :rasta)})
+          (t2/update! (t2/table-name Session) {:id session-id}
+            {:created_at (t/instant 0)})
           (is (= mw.util/response-unauthentic
-                 (auth-enforced-handler (request-with-session-id session-id)))))))
+                 (auth-enforced-handler (request-with-session-id session-id))))
+          (finally (t2/delete! Session :id session-id)))))
 
     (testing "when a Session tied to an inactive User is sent with the request"
       ;; create a new session (specifically created some time in the past so it's EXPIRED)
       ;; should fail due to inactive user
       ;; NOTE that :trashbird is our INACTIVE test user
       (let [session-id (random-session-id)]
-        (tt/with-temp Session [_ {:id      session-id
-                                  :user_id (test.users/user->id :trashbird)}]
+        (try
+          (t2/insert! Session {:id      session-id
+                               :user_id (test.users/user->id :trashbird)})
           (is (= mw.util/response-unauthentic
                  (auth-enforced-handler
-                  (request-with-session-id session-id)))))))))
+                  (request-with-session-id session-id))))
+          (finally (t2/delete! Session :id session-id)))))))
 
 
 ;;; ------------------------------------------ TEST wrap-api-key middleware ------------------------------------------
@@ -86,10 +95,10 @@
 
 (deftest wrap-api-key-test
   (testing "No API key in the request"
-    (is (= nil
-           (:metabase-session-id
-            (wrapped-api-key-handler
-             (ring.mock/request :get "/anyurl"))))))
+    (is (nil?
+         (:metabase-session-id
+          (wrapped-api-key-handler
+           (ring.mock/request :get "/anyurl"))))))
 
   (testing "API Key in header"
     (is (= "foobar"
@@ -131,11 +140,9 @@
               (request-with-api-key "foobar"))))))
 
   (testing "no apikey is set, expect 403"
-    (mt/with-temporary-setting-values [api-key nil]
-      (is (= mw.util/response-forbidden
-             (api-key-enforced-handler
-              (ring.mock/request :get "/anyurl")))))
-    (mt/with-temporary-setting-values [api-key ""]
-      (is (= mw.util/response-forbidden
-             (api-key-enforced-handler
-              (ring.mock/request :get "/anyurl")))))))
+    (doseq [api-key-value [nil ""]]
+      (testing (str "when key is " ({nil "nil" "" "empty"} api-key-value))
+       (mt/with-temporary-setting-values [api-key api-key-value]
+         (is (= mw.auth/key-not-set-response
+                (api-key-enforced-handler
+                 (ring.mock/request :get "/anyurl")))))))))

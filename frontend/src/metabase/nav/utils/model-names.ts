@@ -2,7 +2,7 @@ import { t } from "ttag";
 
 const TRANSLATED_NAME_BY_MODEL_TYPE: Record<string, string> = {
   card: t`Question`,
-  dataset: t`Dataset`,
+  dataset: t`Model`,
   dashboard: t`Dashboard`,
   table: t`Table`,
   database: t`Database`,

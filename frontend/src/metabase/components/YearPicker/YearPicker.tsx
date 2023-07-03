@@ -1,7 +1,7 @@
-import React, { ChangeEvent } from "react";
+import { ChangeEvent } from "react";
 
-import Select from "metabase/core/components/Select";
 import _ from "underscore";
+import Select from "metabase/core/components/Select";
 
 const YEARS = _.range(new Date().getFullYear(), 1900, -1);
 
@@ -23,4 +23,5 @@ const YearPicker = ({ value, onChange }: YearPickerProps) => (
   />
 );
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default YearPicker;

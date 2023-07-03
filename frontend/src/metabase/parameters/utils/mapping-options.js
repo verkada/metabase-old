@@ -1,23 +1,25 @@
-import Question from "metabase-lib/lib/Question";
-
-import { ExpressionDimension } from "metabase-lib/lib/Dimension";
-
+import { tag_names } from "cljs/metabase.shared.parameters.parameters";
+import { isActionDashCard } from "metabase/actions/utils";
+import { isVirtualDashCard } from "metabase/dashboard/utils";
+import Question from "metabase-lib/Question";
+import { ExpressionDimension } from "metabase-lib/Dimension";
 import {
   dimensionFilterForParameter,
   getTagOperatorFilterForParameter,
   variableFilterForParameter,
-} from "./filters";
-
-import { isVirtualDashCard } from "metabase/dashboard/utils";
-
-import { tag_names } from "cljs/metabase.shared.parameters.parameters";
+} from "metabase-lib/parameters/utils/filters";
+import {
+  buildDimensionTarget,
+  buildTemplateTagVariableTarget,
+  buildTextTagTarget,
+} from "metabase-lib/parameters/utils/targets";
 
 function buildStructuredQuerySectionOptions(section) {
   return section.items.map(({ dimension }) => ({
     sectionName: section.name,
     name: dimension.displayName(),
     icon: dimension.icon(),
-    target: ["dimension", dimension.mbql()],
+    target: buildDimensionTarget(dimension),
     // these methods don't exist on instances of ExpressionDimension
     isForeign: !!(dimension instanceof ExpressionDimension
       ? false
@@ -30,7 +32,7 @@ function buildNativeQuerySectionOptions(section) {
     name: dimension.displayName(),
     icon: dimension.icon(),
     isForeign: false,
-    target: ["dimension", dimension.mbql()],
+    target: buildDimensionTarget(dimension),
   }));
 }
 
@@ -39,7 +41,7 @@ function buildVariableOption(variable) {
     name: variable.displayName(),
     icon: variable.icon(),
     isForeign: false,
-    target: ["variable", variable.mbql()],
+    target: buildTemplateTagVariableTarget(variable),
   };
 }
 
@@ -48,7 +50,7 @@ function buildTextTagOption(tagName) {
     name: tagName,
     icon: "string",
     isForeign: false,
-    target: ["text-tag", tagName],
+    target: buildTextTagTarget(tagName),
   };
 }
 
@@ -58,16 +60,42 @@ export function getParameterMappingOptions(
   card,
   dashcard = null,
 ) {
-  if (dashcard && isVirtualDashCard(dashcard)) {
+  if (dashcard && card.display === "text") {
     const tagNames = tag_names(dashcard.visualization_settings.text || "");
     return tagNames ? tagNames.map(buildTextTagOption) : [];
+  }
+
+  if (isActionDashCard(dashcard)) {
+    const actionParams = dashcard?.action?.parameters?.map(param => ({
+      icon: "variable",
+      isForeign: false,
+      name: param.id,
+      ...param,
+    }));
+
+    return actionParams || [];
+  }
+
+  if (!card.dataset_query || isVirtualDashCard(dashcard)) {
+    return [];
   }
 
   const question = new Question(card, metadata);
   const query = question.query();
   const options = [];
-
-  if (question.isStructured()) {
+  if (question.isDataset()) {
+    // treat the dataset/model question like it is already composed so that we can apply
+    // dataset/model-specific metadata to the underlying dimension options
+    const composedDatasetQuery = question.composeDataset().query();
+    options.push(
+      ...composedDatasetQuery
+        .dimensionOptions(
+          parameter ? dimensionFilterForParameter(parameter) : undefined,
+        )
+        .sections()
+        .flatMap(section => buildStructuredQuerySectionOptions(section)),
+    );
+  } else if (question.isStructured()) {
     options.push(
       ...query
         .dimensionOptions(

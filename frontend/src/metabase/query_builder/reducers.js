@@ -1,11 +1,19 @@
-import Utils from "metabase/lib/utils";
 import { handleActions } from "redux-actions";
 import { assoc, dissoc, merge } from "icepick";
 import _ from "underscore";
+import Utils from "metabase/lib/utils";
+
+import TimelineEvents from "metabase/entities/timeline-events";
+import {
+  EDIT_QUESTION,
+  NAVIGATE_TO_NEW_CARD,
+} from "metabase/dashboard/actions";
 
 import {
   RESET_QB,
   INITIALIZE_QB,
+  SET_DATA_REFERENCE_STACK,
+  OPEN_DATA_REFERENCE_AT_QUESTION,
   TOGGLE_DATA_REFERENCE,
   TOGGLE_TEMPLATE_TAGS_EDITOR,
   TOGGLE_SNIPPET_SIDEBAR,
@@ -19,7 +27,6 @@ import {
   API_CREATE_QUESTION,
   API_UPDATE_QUESTION,
   SET_CARD_AND_RUN,
-  SET_TEMPLATE_TAG,
   SET_PARAMETER_VALUE,
   UPDATE_QUESTION,
   RUN_QUERY,
@@ -53,16 +60,18 @@ import {
   onCloseQuestionInfo,
   onOpenTimelines,
   onCloseTimelines,
-  SHOW_TIMELINES,
-  HIDE_TIMELINES,
+  HIDE_TIMELINE_EVENTS,
+  SHOW_TIMELINE_EVENTS,
   SELECT_TIMELINE_EVENTS,
   DESELECT_TIMELINE_EVENTS,
   SET_DOCUMENT_TITLE,
   SET_SHOW_LOADING_COMPLETE_FAVICON,
   SET_DOCUMENT_TITLE_TIMEOUT_ID,
+  CLOSE_QB,
 } from "./actions";
 
 const DEFAULT_UI_CONTROLS = {
+  dataReferenceStack: null,
   isShowingDataReference: false,
   isShowingTemplateTagsEditor: false,
   isShowingNewbModal: false,
@@ -73,6 +82,7 @@ const DEFAULT_UI_CONTROLS = {
   isShowingChartSettingsSidebar: false,
   isShowingQuestionInfoSidebar: false,
   isShowingTimelineSidebar: false,
+  isNativeEditorOpen: false,
   initialChartSetting: null,
   isShowingRawTable: false, // table/viz toggle
   queryBuilderMode: false, // "view" | "notebook" | "dataset"
@@ -85,6 +95,11 @@ const DEFAULT_LOADING_CONTROLS = {
   showLoadCompleteFavicon: false,
   documentTitle: "",
   timeoutId: "",
+};
+
+const DEFAULT_DASHBOARD_STATE = {
+  dashboardId: null,
+  isEditing: false,
 };
 
 const DEFAULT_QUERY_STATUS = "idle";
@@ -156,6 +171,23 @@ export const uiControls = handleActions(
         ...CLOSED_NATIVE_EDITOR_SIDEBARS,
         isShowingDataReference: !state.isShowingDataReference,
       }),
+    },
+    [SET_DATA_REFERENCE_STACK]: {
+      next: (state, { payload }) => ({
+        ...state,
+        dataReferenceStack: payload,
+      }),
+    },
+    [OPEN_DATA_REFERENCE_AT_QUESTION]: {
+      next: (state, { payload }) => {
+        return payload
+          ? {
+              ...state,
+              dataReferenceStack: payload,
+              isShowingDataReference: true,
+            }
+          : state;
+      },
     },
     [TOGGLE_TEMPLATE_TAGS_EDITOR]: {
       next: (state, { payload }) => ({
@@ -230,11 +262,15 @@ export const uiControls = handleActions(
       ...state,
       ...UI_CONTROLS_SIDEBAR_DEFAULTS,
     }),
-    [onOpenChartSettings]: (state, { payload: initial }) => ({
+    [onOpenChartSettings]: (
+      state,
+      { payload: { initialChartSettings, showSidebarTitle = false } = {} },
+    ) => ({
       ...state,
       ...UI_CONTROLS_SIDEBAR_DEFAULTS,
       isShowingChartSettingsSidebar: true,
-      initialChartSetting: initial,
+      initialChartSetting: initialChartSettings,
+      showSidebarTitle: showSidebarTitle,
     }),
     [onCloseChartSettings]: state => ({
       ...state,
@@ -333,15 +369,15 @@ export const card = handleActions(
 
     [CANCEL_DATASET_CHANGES]: { next: (state, { payload }) => payload.card },
 
-    [SET_TEMPLATE_TAG]: { next: (state, { payload }) => payload },
-
     [UPDATE_QUESTION]: (state, { payload: { card } }) => card,
 
     [QUERY_COMPLETED]: {
-      next: (state, { payload: { card } }) => ({
+      next: (state, { payload: { card, modelMetadata } }) => ({
         ...state,
         display: card.display,
-        result_metadata: card.result_metadata,
+        result_metadata: modelMetadata
+          ? modelMetadata.columns
+          : card.result_metadata,
         visualization_settings: card.visualization_settings,
       }),
     },
@@ -411,39 +447,45 @@ export const lastRunCard = handleActions(
     [RESET_QB]: { next: (state, { payload }) => null },
     [QUERY_COMPLETED]: { next: (state, { payload }) => payload.card },
     [QUERY_ERRORED]: { next: (state, { payload }) => null },
-    [CANCEL_DATASET_CHANGES]: { next: () => null },
   },
   null,
 );
+
+function mergeMetadatWithQueryResults(queryResults, metadata) {
+  const [result] = queryResults;
+  const { columns } = metadata;
+  return [
+    {
+      ...result,
+      data: {
+        ...result.data,
+        cols: columns,
+        results_metadata: metadata,
+      },
+    },
+  ];
+}
 
 // The results of a query execution.  optionally an error if the query fails to complete successfully.
 export const queryResults = handleActions(
   {
     [RESET_QB]: { next: (state, { payload }) => null },
     [QUERY_COMPLETED]: {
-      next: (state, { payload }) => payload.queryResults,
+      next: (state, { payload: { queryResults, modelMetadata } }) => {
+        return modelMetadata
+          ? mergeMetadatWithQueryResults(queryResults, modelMetadata)
+          : queryResults;
+      },
     },
     [QUERY_ERRORED]: {
       next: (state, { payload }) => (payload ? [payload] : state),
     },
     [SET_RESULTS_METADATA]: {
       next: (state, { payload: results_metadata }) => {
-        const [result] = state;
-        const { columns } = results_metadata;
-        return [
-          {
-            ...result,
-            data: {
-              ...result.data,
-              cols: columns,
-              results_metadata,
-            },
-          },
-        ];
+        return mergeMetadatWithQueryResults(state, results_metadata);
       },
     },
     [CLEAR_QUERY_RESULT]: { next: (state, { payload }) => null },
-    [CANCEL_DATASET_CHANGES]: { next: () => null },
   },
   null,
 );
@@ -512,18 +554,40 @@ export const currentState = handleActions(
   null,
 );
 
-export const visibleTimelineIds = handleActions(
+export const parentDashboard = handleActions(
+  {
+    [NAVIGATE_TO_NEW_CARD]: {
+      next: (state, { payload: { dashboardId } }) => ({
+        dashboardId,
+        isEditing: false,
+      }),
+    },
+    [EDIT_QUESTION]: {
+      next: (state, { payload: { dashboardId } }) => ({
+        dashboardId,
+        isEditing: true,
+      }),
+    },
+    [CLOSE_QB]: { next: () => DEFAULT_DASHBOARD_STATE },
+  },
+  DEFAULT_DASHBOARD_STATE,
+);
+
+export const visibleTimelineEventIds = handleActions(
   {
     [INITIALIZE_QB]: { next: () => [] },
-    [SHOW_TIMELINES]: {
-      next: (state, { payload: timelines }) => [
-        ...state,
-        ...timelines.map(t => t.id),
-      ],
+    [SHOW_TIMELINE_EVENTS]: {
+      next: (state, { payload: events }) =>
+        _.uniq([...state, ...events.map(event => event.id)]),
     },
-    [HIDE_TIMELINES]: {
-      next: (state, { payload: timelines }) =>
-        _.without(state, ...timelines.map(t => t.id)),
+    [HIDE_TIMELINE_EVENTS]: {
+      next: (state, { payload: events }) => {
+        const eventIdsToHide = events.map(event => event.id);
+        return state.filter(eventId => !eventIdsToHide.includes(eventId));
+      },
+    },
+    [TimelineEvents.actionTypes.CREATE]: {
+      next: (state, { payload }) => [...state, payload.timelineEvent.id],
     },
     [RESET_QB]: { next: () => [] },
   },
@@ -538,10 +602,6 @@ export const selectedTimelineEventIds = handleActions(
     },
     [DESELECT_TIMELINE_EVENTS]: {
       next: () => [],
-    },
-    [HIDE_TIMELINES]: {
-      next: (state, { payload: timelines }) =>
-        _.without(state, ...timelines.flatMap(t => t.events.map(e => e.id))),
     },
     [onCloseTimelines]: { next: () => [] },
     [RESET_QB]: { next: () => [] },

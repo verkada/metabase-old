@@ -1,23 +1,25 @@
 (ns metabase.models.timeline-test
   "Tests for the Timeline model."
-  (:require [clojure.test :refer :all]
-            [metabase.models.collection :refer [Collection]]
-            [metabase.models.timeline :as timeline :refer [Timeline]]
-            [metabase.models.timeline-event :refer [TimelineEvent]]
-            [metabase.test :as mt]
-            [metabase.util :as u]))
+  (:require
+   [clojure.test :refer :all]
+   [metabase.models.collection :refer [Collection]]
+   [metabase.models.timeline :as timeline :refer [Timeline]]
+   [metabase.models.timeline-event :refer [TimelineEvent]]
+   [metabase.test :as mt]
+   [metabase.util :as u]
+   [toucan2.tools.with-temp :as t2.with-temp]))
 
 (deftest timelines-for-collection-test
-  (mt/with-temp Collection [collection {:name "Rasta's Collection"}]
+  (t2.with-temp/with-temp [Collection collection {:name "Rasta's Collection"}]
     (let [coll-id  (u/the-id collection)
           event-names (fn [timelines]
                         (into #{} (comp (mapcat :events) (map :name)) timelines))]
       (mt/with-temp* [Timeline [tl-a {:name "tl-a" :collection_id coll-id}]
                       Timeline [tl-b {:name "tl-b" :collection_id coll-id}]
-                      TimelineEvent [e-a {:timeline_id (u/the-id tl-a) :name "e-a"}]
-                      TimelineEvent [e-b {:timeline_id (u/the-id tl-a) :name "e-b" :archived true}]
-                      TimelineEvent [e-c {:timeline_id (u/the-id tl-b) :name "e-c"}]
-                      TimelineEvent [e-d {:timeline_id (u/the-id tl-b) :name "e-d" :archived true}]]
+                      TimelineEvent [_ {:timeline_id (u/the-id tl-a) :name "e-a"}]
+                      TimelineEvent [_ {:timeline_id (u/the-id tl-a) :name "e-b" :archived true}]
+                      TimelineEvent [_ {:timeline_id (u/the-id tl-b) :name "e-c"}]
+                      TimelineEvent [_ {:timeline_id (u/the-id tl-b) :name "e-d" :archived true}]]
         (testing "Fetching timelines"
           (testing "don't include events by default"
             (is (= #{}

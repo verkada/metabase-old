@@ -66,12 +66,12 @@ export const RadioContainer = styled.div<RadioContainerProps>`
   &:hover {
     color: ${props =>
       !props.checked && !props.showButtons
-        ? getContrastSchemeColor(props.colorScheme)
+        ? getSchemeColor(props.colorScheme)
         : ""};
   }
 
   ${RadioInput}:focus + & {
-    outline: 2px solid ${() => color("focus")};
+    outline: 2px solid ${color("focus")};
   }
 
   ${RadioInput}:focus:not(:focus-visible) + & {
@@ -103,6 +103,10 @@ export const RadioContainerBubble = styled(RadioContainer)`
       : lighten(getSchemeColor(props.colorScheme))};
 
   &:hover {
+    color: ${props =>
+      !props.checked && !props.showButtons
+        ? getContrastSchemeColor(props.colorScheme)
+        : ""};
     background-color: ${props =>
       props.checked ? "" : lighten(getSchemeColor(props.colorScheme), 0.38)};
     transition: background-color 300ms linear;
@@ -130,6 +134,7 @@ export const RadioButton = styled.span<RadioButtonProps>`
 `;
 
 export const RadioLabelText = styled.span`
+  flex: 1 1 auto;
   display: block;
 `;
 

@@ -1,38 +1,39 @@
-import React from "react";
 import { t } from "ttag";
-import { getIn } from "icepick";
-import Users from "metabase/entities/users";
+import { useDispatch, useSelector } from "metabase/lib/redux";
 import { UserInfo } from "metabase-types/store";
-import ActiveStep from "../ActiveStep";
-import InactiveStep from "../InvactiveStep";
+import { ActiveStep } from "../ActiveStep";
+import { InactiveStep } from "../InvactiveStep";
+import { UserForm } from "../UserForm";
+import { selectStep, submitUser } from "../../actions";
+import { USER_STEP } from "../../constants";
 import {
-  UserFormRoot,
-  UserFormGroup,
-  StepDescription,
-} from "./UserStep.styled";
-import { FormProps } from "./types";
+  getIsHosted,
+  getIsSetupCompleted,
+  getIsStepActive,
+  getIsStepCompleted,
+  getUser,
+} from "../../selectors";
+import { validatePassword } from "../../utils";
+import { StepDescription } from "./UserStep.styled";
 
-export interface UserStepProps {
-  user?: UserInfo;
-  isHosted: boolean;
-  isStepActive: boolean;
-  isStepCompleted: boolean;
-  isSetupCompleted: boolean;
-  onPasswordChange: (user: UserInfo) => void;
-  onStepSelect: () => void;
-  onStepSubmit: (user: UserInfo) => void;
-}
+export const UserStep = (): JSX.Element => {
+  const user = useSelector(getUser);
+  const isHosted = useSelector(getIsHosted);
+  const isStepActive = useSelector(state => getIsStepActive(state, USER_STEP));
+  const isStepCompleted = useSelector(state =>
+    getIsStepCompleted(state, USER_STEP),
+  );
+  const isSetupCompleted = useSelector(getIsSetupCompleted);
+  const dispatch = useDispatch();
 
-const UserStep = ({
-  user,
-  isHosted,
-  isStepActive,
-  isStepCompleted,
-  isSetupCompleted,
-  onPasswordChange,
-  onStepSelect,
-  onStepSubmit,
-}: UserStepProps): JSX.Element => {
+  const handleStepSelect = () => {
+    dispatch(selectStep(USER_STEP));
+  };
+
+  const handleSubmit = (user: UserInfo) => {
+    dispatch(submitUser(user));
+  };
+
   if (!isStepActive) {
     return (
       <InactiveStep
@@ -40,7 +41,7 @@ const UserStep = ({
         label={2}
         isStepCompleted={isStepCompleted}
         isSetupCompleted={isSetupCompleted}
-        onStepSelect={onStepSelect}
+        onStepSelect={handleStepSelect}
       />
     );
   }
@@ -55,51 +56,10 @@ const UserStep = ({
       )}
       <UserForm
         user={user}
-        onSubmit={onStepSubmit}
-        onPasswordChange={onPasswordChange}
+        onValidatePassword={validatePassword}
+        onSubmit={handleSubmit}
       />
     </ActiveStep>
-  );
-};
-
-interface UserFormProps {
-  user?: UserInfo;
-  onSubmit: (user: UserInfo) => void;
-  onPasswordChange: (user: UserInfo) => void;
-}
-
-const UserForm = ({ user, onSubmit, onPasswordChange }: UserFormProps) => {
-  const handleAsyncValidate = async (user: UserInfo) => {
-    try {
-      await onPasswordChange(user);
-      return {};
-    } catch (error) {
-      return getSubmitError(error);
-    }
-  };
-
-  return (
-    <UserFormRoot
-      form={Users.forms.setup()}
-      user={user}
-      asyncValidate={handleAsyncValidate}
-      asyncBlurFields={["password"]}
-      onSubmit={onSubmit}
-    >
-      {({ Form, FormField, FormFooter }: FormProps) => (
-        <Form>
-          <UserFormGroup>
-            <FormField name="first_name" />
-            <FormField name="last_name" />
-          </UserFormGroup>
-          <FormField name="email" />
-          <FormField name="site_name" />
-          <FormField name="password" />
-          <FormField name="password_confirm" />
-          <FormFooter submitTitle={t`Next`} />
-        </Form>
-      )}
-    </UserFormRoot>
   );
 };
 
@@ -109,9 +69,3 @@ const getStepTitle = (user: UserInfo | undefined, isStepCompleted: boolean) => {
     ? t`Hi${namePart}. Nice to meet you!`
     : t`What should we call you?`;
 };
-
-const getSubmitError = (error: unknown) => {
-  return getIn(error, ["data", "errors"]);
-};
-
-export default UserStep;

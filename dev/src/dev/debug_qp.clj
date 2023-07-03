@@ -1,18 +1,19 @@
 (ns dev.debug-qp
   "TODO -- I think this should be moved to something like [[metabase.test.util.debug-qp]]"
-  (:require [clojure.data :as data]
-            [clojure.pprint :as pprint]
-            [clojure.string :as str]
-            [clojure.walk :as walk]
-            [medley.core :as m]
-            [metabase.mbql.schema :as mbql.s]
-            [metabase.mbql.util :as mbql.u]
-            [metabase.models.field :refer [Field]]
-            [metabase.models.table :refer [Table]]
-            [metabase.query-processor :as qp]
-            [metabase.query-processor.reducible :as qp.reducible]
-            [metabase.util :as u]
-            [toucan.db :as db]))
+  (:require
+   [clojure.pprint :as pprint]
+   [clojure.string :as str]
+   [clojure.walk :as walk]
+   [lambdaisland.deep-diff2 :as ddiff]
+   [medley.core :as m]
+   [metabase.mbql.schema :as mbql.s]
+   [metabase.mbql.util :as mbql.u]
+   [metabase.models.field :refer [Field]]
+   [metabase.models.table :refer [Table]]
+   [metabase.query-processor :as qp]
+   [metabase.query-processor.reducible :as qp.reducible]
+   [metabase.util :as u]
+   [toucan2.core :as t2]))
 
 ;;;; [[->sorted-mbql-query-map]]
 
@@ -96,12 +97,12 @@
 ;;;; [[add-names]]
 
 (defn- field-and-table-name [field-id]
-  (let [{field-name :name, table-id :table_id} (db/select-one [Field :name :table_id] :id field-id)]
-    [(db/select-one-field :name Table :id table-id) field-name]))
+  (let [{field-name :name, table-id :table_id} (t2/select-one [Field :name :table_id] :id field-id)]
+    [(t2/select-one-fn :name Table :id table-id) field-name]))
 
 (defn- add-table-id-name [table-id]
   (list 'do
-        (symbol (format "#_%s" (pr-str (db/select-one-field :name Table :id table-id))))
+        (symbol (format "#_%s" (pr-str (t2/select-one-fn :name Table :id table-id))))
         table-id))
 
 (defn add-names
@@ -171,13 +172,82 @@
 
 (defn- print-diff [before after]
   (assert (not= before after))
-  (let [[only-in-before only-in-after] (data/diff before after)]
-    (when *print-full?*
-      (println (u/pprint-to-str 'cyan (format-output after))))
-    (when (seq only-in-before)
-      (println (u/colorize 'red (str "-\n" (u/pprint-to-str (format-output only-in-before))))))
-    (when (seq only-in-after)
-      (println (u/colorize 'green (str "+\n" (u/pprint-to-str (format-output only-in-after))))))))
+  (ddiff/pretty-print (ddiff/diff before after)
+                      ;; the default printer is very (too?) colorful.
+                      ;; this is one that strips color except for the diffs:
+                      (ddiff/printer {:color-scheme
+                                      {:lambdaisland.deep-diff2.printer-impl/deletion  [:red]
+                                       :lambdaisland.deep-diff2.printer-impl/insertion [:green]
+                                       :lambdaisland.deep-diff2.printer-impl/other     [:white]
+                                       :delimiter       nil
+                                       :tag             nil
+                                       :nil             nil
+                                       :boolean         nil
+                                       :number          nil
+                                       :string          nil
+                                       :character       nil
+                                       :keyword         nil
+                                       :symbol          nil
+                                       :function-symbol nil
+                                       :class-delimiter nil
+                                       :class-name      nil}}))
+  (println))
+
+(defn- print-transform-result [before after]
+  (when *print-full?*
+    (println (u/pprint-to-str 'cyan (format-output after))))
+  (print-diff before after))
+
+(defn- print-error [location middleware-var e]
+  (println (format "Error %s in %s:\n%s"
+                   location
+                   middleware-var
+                   (u/pprint-to-str 'red (Throwable->map e)))))
+
+(defmulti print-formatted-event
+  "Writes the debugger event to the standard output. Uses colors and
+  deep diffing to show changes made by middlewares.
+
+  This is the default printer of `process-query-debug`."
+  first)
+
+(defmethod print-formatted-event ::transformed-query
+  [[_ middleware-var before after]]
+  (println (format "[pre] %s transformed query:" middleware-var))
+  (print-transform-result before after))
+
+(defmethod print-formatted-event ::pre-process-query-error
+  [[_ middleware-var e]]
+  (print-error "pre-processing query" middleware-var e))
+
+(defmethod print-formatted-event ::transformed-metadata
+  [[_ middleware-var before after]]
+  (println (format "[post] %s transformed metadata:" middleware-var))
+  (print-transform-result before after))
+
+(defmethod print-formatted-event ::post-process-metadata-error
+  [[_ middleware-var e]]
+  (print-error "post-processing result metadata" middleware-var e))
+
+(defmethod print-formatted-event ::post-process-result-error
+  [[_ middleware-var e]]
+  (print-error "post-processing result" middleware-var e))
+
+(defmethod print-formatted-event ::transformed-result
+  [[_ middleware-var before after]]
+  (println (format "[post] %s transformed result:" middleware-var))
+  (print-transform-result before after))
+
+(defmethod print-formatted-event ::error-reduce-row
+  [[_ middleware-var e]]
+  (print-error "reducing row" middleware-var e))
+
+(defmethod print-formatted-event ::transformed-row
+  [[_ middleware-var before after]]
+  (println (format "[post] %s transformed row" middleware-var))
+  (print-transform-result before after))
+
+(def ^:private ^:dynamic *printer* print-formatted-event)
 
 (defn- debug-query-changes [middleware-var middleware]
   (fn [next-middleware]
@@ -186,8 +256,7 @@
         ((middleware
           (fn [query-after rff context]
             (when-not (= query-before query-after)
-              (println (format "[pre] %s transformed query:" middleware-var))
-              (print-diff query-before query-after))
+              (*printer* [::transformed-query middleware-var query-before query-after]))
             (when *validate-query?*
               (try
                 (mbql.s/validate-query query-after)
@@ -205,9 +274,7 @@
         (catch Throwable e
           (when (::our-error? (ex-data e))
             (throw e))
-          (println (format "Error pre-processing query in %s:\n%s"
-                           middleware-var
-                           (u/pprint-to-str 'red (Throwable->map e))))
+          (*printer* [::pre-process-query-error middleware-var e])
           (throw (ex-info "Error pre-processing query"
                           {::our-error? true
                            :middleware  middleware-var
@@ -235,9 +302,7 @@
            (catch Throwable e
              (when (::our-error? (ex-data e))
                (throw e))
-             (println (format "Error post-processing result metadata in %s:\n%s"
-                              middleware-var
-                              (u/pprint-to-str 'red (Throwable->map e))))
+             (*printer* [::post-process-metadata-error middleware-var e])
              (throw (ex-info "Error post-processing result metadata"
                              {::our-error? true
                               :middleware  middleware-var
@@ -246,8 +311,7 @@
      (fn after-rff-xform [rff]
        (fn [metadata-after]
          (when-not (= @before metadata-after)
-           (println (format "[post] %s transformed metadata:" middleware-var))
-           (print-diff @before metadata-after))
+           (*printer* [::transformed-metadata middleware-var @before metadata-after]))
          (rff metadata-after))))))
 
 (defn- debug-rfs [middleware-var middleware before-xform after-xform]
@@ -278,9 +342,7 @@
             (catch Throwable e
               (when (::our-error? (ex-data e))
                 (throw e))
-              (println (format "Error post-processing result in %s:\n%s"
-                               middleware-var
-                               (u/pprint-to-str 'red (Throwable->map e))))
+              (*printer* [::post-process-result-error middleware-var e])
               (throw (ex-info "Error post-processing result"
                               {::our-error? true
                                :middleware  middleware-var
@@ -292,8 +354,7 @@
          ([] (rf))
          ([result]
           (when-not (= @before result)
-            (println (format "[post] %s transformed result:" middleware-var))
-            (print-diff @before result))
+            (*printer* [::transformed-result middleware-var @before result]))
           (rf result))
          ([result row] (rf result row)))))))
 
@@ -314,9 +375,7 @@
             (catch Throwable e
               (when (::our-error? (ex-data e))
                 (throw e))
-              (println (format "Error reducing row in %s:\n%s"
-                               middleware-var
-                               (u/pprint-to-str 'red (Throwable->map e))))
+              (*printer* [::error-reduce-row middleware-var e])
               (throw (ex-info "Error reducing row"
                               {::our-error? true
                                :middleware  middleware-var
@@ -330,8 +389,7 @@
           (rf result))
          ([result row]
           (when-not (= @before row)
-            (println (format "[post] %s transformed row" middleware-var))
-            (print-diff @before row))
+            (*printer* [::transformed-row @before row]))
           (rf result row)))))))
 
 (defn- default-debug-middleware
@@ -418,13 +476,17 @@
 
   * `:validate-query?` -- whether to validate the query after each preprocessing step, so you can figure out who's
     breaking it. (TODO -- `mbql-to-native` middleware currently leaves the old mbql `:query` in place,
-    which cases query to fail at that point -- manually comment that behavior out if needed"
-  [query & {:keys [print-full? print-metadata? print-names? validate-query? context]
-            :or   {print-full? true, print-metadata? false, print-names? true, validate-query? false}}]
+    which cases query to fail at that point -- manually comment that behavior out if needed
+
+  * :printer -- the function to process the debug events, defaults to `print-formatted-event`"
+  [query & {:keys [print-full? print-metadata? print-names? validate-query? printer context]
+            :or   {print-full? true, print-metadata? false, print-names? true, validate-query? false
+                   printer print-formatted-event}}]
   (binding [*print-full?*               print-full?
             *print-metadata?*           print-metadata?
             *print-names?*              print-names?
             *validate-query?*           validate-query?
+            *printer*                   printer
             pprint/*print-right-margin* 80]
     (with-altered-middleware
       (let [middleware (for [middleware-var (default-debug-middleware)
@@ -479,8 +541,8 @@
     (mbql.u/replace form
       ([:field (id :guard integer?) nil] :guard can-symbolize?)
       (let [[table-name field-name] (field-and-table-name id)
-            field-name              (some-> field-name str/lower-case)
-            table-name              (some-> table-name str/lower-case)]
+            field-name              (some-> field-name u/lower-case-en)
+            table-name              (some-> table-name u/lower-case-en)]
         (if (= table-name table)
           [::$ field-name]
           [::$ table-name field-name]))
@@ -514,14 +576,14 @@
 
       (m :guard (every-pred map? (comp integer? :source-table)))
       (-> (update m :source-table (fn [table-id]
-                                    [::$$ (some-> (db/select-one-field :name Table :id table-id) str/lower-case)]))
+                                    [::$$ (some-> (t2/select-one-fn :name Table :id table-id) u/lower-case-en)]))
           (expand table))
 
       (m :guard (every-pred map? (comp integer? :fk-field-id)))
       (-> (update m :fk-field-id (fn [fk-field-id]
                                    (let [[table-name field-name] (field-and-table-name fk-field-id)
-                                         field-name              (some-> field-name str/lower-case)
-                                         table-name              (some-> table-name str/lower-case)]
+                                         field-name              (some-> field-name u/lower-case-en)
+                                         table-name              (some-> table-name u/lower-case-en)]
                                      (if (= table-name table)
                                        [::% field-name]
                                        [::% table-name field-name]))))
@@ -556,7 +618,7 @@
     source-table
     (do
       (assert (integer? source-table))
-      (str/lower-case (db/select-one-field :name Table :id source-table)))
+      (u/lower-case-en (t2/select-one-fn :name Table :id source-table)))
 
     source-query
     (recur source-query)))

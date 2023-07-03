@@ -1,7 +1,6 @@
 import { t } from "ttag";
 import { combineReducers, handleActions } from "metabase/lib/redux";
 import Settings from "metabase/lib/settings";
-import { User } from "metabase-types/api";
 import {
   PLUGIN_ADMIN_ALLOWED_PATH_GETTERS,
   PLUGIN_ADMIN_NAV_ITEMS,
@@ -9,6 +8,7 @@ import {
 } from "metabase/plugins";
 import { REFRESH_CURRENT_USER } from "metabase/redux/user";
 import { AdminPath, AdminPathKey } from "metabase-types/store";
+import { isNotNull } from "metabase/core/utils/types";
 import { DISABLE_ADMIN_PATH, DISABLE_NOTICE } from "./actions";
 
 const getAdminPaths: () => AdminPath[] = () => {
@@ -24,7 +24,7 @@ const getAdminPaths: () => AdminPath[] = () => {
       key: "databases",
     },
     {
-      name: t`Data Model`,
+      name: t`Table Metadata`,
       path: "/admin/datamodel",
       key: "data-model",
     },
@@ -88,7 +88,7 @@ const paths = handleActions(
 
         return state
           .filter(path => (allowedPaths.has(path.key) ? path : null))
-          .filter(Boolean);
+          .filter(isNotNull);
       },
     },
   },
@@ -102,6 +102,7 @@ const isNoticeEnabled = handleActions(
   Settings.deprecationNoticeEnabled(),
 );
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default combineReducers({
   isNoticeEnabled,
   paths,

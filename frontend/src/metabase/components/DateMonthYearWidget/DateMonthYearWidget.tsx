@@ -1,5 +1,5 @@
-import React from "react";
-import moment from "moment";
+import { Component } from "react";
+import moment from "moment-timezone";
 import _ from "underscore";
 import cx from "classnames";
 
@@ -18,7 +18,7 @@ type State = {
   year: number;
 };
 
-class DateMonthYearWidget extends React.Component<Props, State> {
+class DateMonthYearWidget extends Component<Props, State> {
   state: State = {
     month: null,
     year: moment().year(),
@@ -100,4 +100,5 @@ const Month = ({ month, selected, onClick }: MonthProp) => (
   </div>
 );
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default DateMonthYearWidget;

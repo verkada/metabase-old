@@ -1,11 +1,9 @@
 /* eslint-disable react/prop-types */
-import React from "react";
-
 import { t } from "ttag";
 
 import EmptyState from "metabase/components/EmptyState";
 
-import { getSettingDefintionsForColumn } from "metabase/visualizations/lib/settings/column";
+import { getSettingDefinitionsForColumn } from "metabase/visualizations/lib/settings/column";
 import {
   getSettingsWidgets,
   getComputedSettings,
@@ -31,7 +29,7 @@ function getWidgets({
     column = { ...column, unit: "default" };
   }
 
-  const settingsDefs = getSettingDefintionsForColumn(series, column);
+  const settingsDefs = getSettingDefinitionsForColumn(series, column);
 
   const computedSettings = getComputedSettings(
     settingsDefs,

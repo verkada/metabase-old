@@ -1,13 +1,14 @@
 (ns metabase.cmd.endpoint-dox
   "Implementation for the `api-documentation` command, which generates doc pages
   for API endpoints."
-  (:require [clojure.java.classpath :as classpath]
-            [clojure.java.io :as io]
-            [clojure.string :as str]
-            [clojure.tools.namespace.find :as ns.find]
-            [metabase.config :as config]
-            [metabase.plugins.classloader :as classloader]
-            [metabase.util :as u]))
+  (:require
+   [clojure.java.classpath :as classpath]
+   [clojure.java.io :as io]
+   [clojure.string :as str]
+   [clojure.tools.namespace.find :as ns.find]
+   [metabase.config :as config]
+   [metabase.plugins.classloader :as classloader]
+   [metabase.util :as u]))
 
 ;;;; API docs intro
 
@@ -26,7 +27,7 @@
     (str/split endpoint #"metabase-enterprise.")
     (str/split endpoint #"\.")))
 
-(def initialisms "Used to format initialisms/acronyms in generated docs." '["SSO" "GTAP" "LDAP" "SQL" "JSON"])
+(def initialisms "Used to format initialisms/acronyms in generated docs." '["SSO" "SAML" "GTAP" "LDAP" "SQL" "JSON"])
 
 (defn capitalize-initialisms
   "Converts initialisms to upper case."
@@ -34,7 +35,7 @@
   (let [re (re-pattern (str "(?i)(?:" (str/join "|" initialisms) ")"))
         matches (re-seq re name)]
     (if matches
-      (reduce (fn [n m] (str/replace n m (str/upper-case m))) name matches)
+      (reduce (fn [n m] (str/replace n m (u/upper-case-en m))) name matches)
       name)))
 
 (defn- endpoint-ns-name
@@ -98,32 +99,6 @@
     (if (str/blank? desc)
       desc
       (str desc "\n\n"))))
-
-;;;; API endpoint page route table of contents
-
-(defn- anchor-link
-  "Converts an endpoint string to an anchor link, like [GET /api/alert](#get-apialert),
-  for use in tables of contents for endpoint routes."
-  [ep-name]
-  (let [al (-> (str "#" (str/lower-case ep-name))
-               (str/replace #"[/:%]" "")
-               (str/replace " " "-")
-               (#(str "(" % ")")))]
-    (str "[" ep-name "]" al)))
-
-(defn- toc-links
-  "Creates a list of links to endpoints in the relevant namespace."
-  [endpoint]
-  (-> (:endpoint-str endpoint)
-      (str/replace #"[#+`]" "")
-      str/trim
-      anchor-link
-      (#(str "  - " %))))
-
-(defn route-toc
-  "Generates a table of contents for routes in a page."
-  [ep-data]
-  (str (str/join "\n" (map toc-links ep-data)) "\n\n"))
 
 ;;;; API endpoints
 
@@ -190,7 +165,6 @@
          (endpoint-page-frontmatter ep ep-data)
          (endpoint-page-title ep)
          (endpoint-page-description ep ep-data)
-         (route-toc ep-data)
          (endpoint-docs ep-data)
          (endpoint-footer ep-data)))
 
@@ -201,7 +175,7 @@
                  str/trim
                  (str/split #"\s+")
                  (#(str/join "-" %))
-                 str/lower-case)]
+                 u/lower-case-en)]
     (str dir file ext)))
 
 (defn build-endpoint-link

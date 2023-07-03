@@ -1,8 +1,8 @@
 /* eslint-disable react/prop-types */
-import React from "react";
 import _ from "underscore";
 import { connect } from "react-redux";
 
+import { t } from "ttag";
 import Radio from "metabase/core/components/Radio/";
 import CheckBox from "metabase/core/components/CheckBox";
 import Select from "metabase/core/components/Select";
@@ -10,7 +10,6 @@ import Toggle from "metabase/core/components/Toggle";
 import { useUniqueId } from "metabase/hooks/use-unique-id";
 import MetabaseSettings from "metabase/lib/settings";
 import { PLUGIN_SELECTORS } from "metabase/plugins";
-import { t } from "ttag";
 
 import {
   StyleContainer,

@@ -1,19 +1,14 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
+import { createRef, Component } from "react";
 import PropTypes from "prop-types";
 import { t, jt, ngettext, msgid } from "ttag";
 
-import PulseEditName from "./PulseEditName";
-import PulseEditCollection from "./PulseEditCollection";
-import PulseEditCards from "./PulseEditCards";
-import PulseEditChannels from "./PulseEditChannels";
-import PulseEditSkip from "./PulseEditSkip";
-import WhatsAPulse from "./WhatsAPulse";
-
+import cx from "classnames";
 import ActionButton from "metabase/components/ActionButton";
+
 import Button from "metabase/core/components/Button";
 import DeleteModalWithConfirm from "metabase/components/DeleteModalWithConfirm";
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import * as MetabaseAnalytics from "metabase/lib/analytics";
 import ModalWithTrigger from "metabase/components/ModalWithTrigger";
 import ModalContent from "metabase/components/ModalContent";
@@ -26,8 +21,13 @@ import { pulseIsValid, cleanPulse, emailIsEnabled } from "metabase/lib/pulse";
 import * as Urls from "metabase/lib/urls";
 
 import Collections from "metabase/entities/collections";
+import WhatsAPulse from "./WhatsAPulse";
+import PulseEditSkip from "./PulseEditSkip";
+import PulseEditChannels from "./PulseEditChannels";
+import PulseEditCards from "./PulseEditCards";
+import PulseEditCollection from "./PulseEditCollection";
+import PulseEditName from "./PulseEditName";
 
-import cx from "classnames";
 import { PulseHeader, PulseHeaderContent } from "./PulseEdit.styled";
 
 class PulseEdit extends Component {
@@ -47,7 +47,7 @@ class PulseEdit extends Component {
   constructor(props) {
     super(props);
 
-    this.pulseInfo = React.createRef();
+    this.pulseInfo = createRef();
   }
 
   componentDidMount() {
@@ -141,7 +141,7 @@ class PulseEdit extends Component {
     const link = (
       <a
         className="link"
-        href={MetabaseSettings.docsUrl("users-guide/dashboard-subscriptions")}
+        href={MetabaseSettings.docsUrl("dashboards/subscriptions")}
       >{t`dashboard subscriptions`}</a>
     );
     return (
@@ -170,7 +170,12 @@ class PulseEdit extends Component {
         </div>
         <div className="PulseEdit-content pt2 pb4">
           <PulseHeader className="hover-parent hover--visibility">
-            <Icon name="warning" color={color("warning")} size={24} mr={1} />
+            <Icon
+              name="warning"
+              color={color("warning")}
+              size={24}
+              className="mr1"
+            />
             <PulseHeaderContent>
               <Subhead>{t`Pulses are being phased out`}</Subhead>
               <Text>{jt`You can now set up ${link} instead. We'll remove Pulses in a future release, and help you migrate any that you still have.`}</Text>
@@ -219,7 +224,7 @@ class PulseEdit extends Component {
               successText={t`Saved`}
             />
           )}
-          <Button onClick={() => this.props.goBack()} ml={2}>
+          <Button onClick={() => this.props.goBack()} className="ml2">
             {t`Cancel`}
           </Button>
           {pulse.id != null && !pulse.archived && (

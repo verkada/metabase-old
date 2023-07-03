@@ -1,13 +1,15 @@
 (ns metabase.query-processor-test.count-where-test
-  (:require [clojure.test :refer :all]
-            [metabase.models.metric :refer [Metric]]
-            [metabase.models.segment :refer [Segment]]
-            [metabase.test :as mt]))
+  (:require
+   [clojure.test :refer :all]
+   [metabase.models.metric :refer [Metric]]
+   [metabase.models.segment :refer [Segment]]
+   [metabase.test :as mt]
+   [toucan2.tools.with-temp :as t2.with-temp]))
 
 (deftest basic-test
   (mt/test-drivers (mt/normal-drivers-with-feature :basic-aggregations)
     (is (= 94
-           (->> {:aggregation [[:count-where [:< [:field-id (mt/id :venues :price)] 4]]]}
+           (->> {:aggregation [[:count-where [:< [:field (mt/id :venues :price) nil] 4]]]}
                 (mt/run-mbql-query venues)
                 mt/rows
                 ffirst
@@ -25,10 +27,10 @@
     (is (= 17
            (->> {:aggregation [[:count-where
                                 [:and
-                                 [:< [:field-id (mt/id :venues :price)] 4]
+                                 [:< [:field (mt/id :venues :price) nil] 4]
                                  [:or
-                                  [:starts-with [:field-id (mt/id :venues :name)] "M"]
-                                  [:ends-with [:field-id (mt/id :venues :name)] "t"]]]]]}
+                                  [:starts-with [:field (mt/id :venues :name) nil] "M"]
+                                  [:ends-with [:field (mt/id :venues :name) nil] "t"]]]]]}
                 (mt/run-mbql-query venues)
                 mt/rows
                 ffirst
@@ -37,8 +39,8 @@
 (deftest filter-test
   (mt/test-drivers (mt/normal-drivers-with-feature :basic-aggregations)
     (is (= nil
-           (->> {:aggregation [[:count-where [:< [:field-id (mt/id :venues :price)] 4]]]
-                 :filter      [:> [:field-id (mt/id :venues :price)] Long/MAX_VALUE]}
+           (->> {:aggregation [[:count-where [:< [:field (mt/id :venues :price) nil] 4]]]
+                 :filter      [:> [:field (mt/id :venues :price) nil] Long/MAX_VALUE]}
                 (mt/run-mbql-query venues)
                 mt/rows
                 ffirst)))))
@@ -49,8 +51,8 @@
             [3 0]
             [4 1]
             [5 1]]
-           (->> {:aggregation [[:count-where [:< [:field-id (mt/id :venues :price)] 2]]]
-                 :breakout    [[:field-id (mt/id :venues :category_id)]]
+           (->> {:aggregation [[:count-where [:< [:field (mt/id :venues :price) nil] 2]]]
+                 :breakout    [[:field (mt/id :venues :category_id) nil]]
                  :limit       4}
                 (mt/run-mbql-query venues)
                 (mt/round-all-decimals 2)
@@ -63,7 +65,7 @@
     (is (= 48
            (->> {:aggregation [[:+
                                 [:/
-                                 [:count-where [:< [:field-id (mt/id :venues :price)] 4]]
+                                 [:count-where [:< [:field (mt/id :venues :price) nil] 4]]
                                  2]
                                 1]]}
                 (mt/run-mbql-query venues)
@@ -73,9 +75,9 @@
 
 (deftest segment-test
   (mt/test-drivers (mt/normal-drivers-with-feature :basic-aggregations)
-    (mt/with-temp Segment [{segment-id :id} {:table_id   (mt/id :venues)
-                                             :definition {:source-table (mt/id :venues)
-                                                          :filter       [:< [:field-id (mt/id :venues :price)] 4]}}]
+    (t2.with-temp/with-temp [Segment {segment-id :id} {:table_id   (mt/id :venues)
+                                                       :definition {:source-table (mt/id :venues)
+                                                                    :filter       [:< [:field (mt/id :venues :price) nil] 4]}}]
       (is (= 94
              (->> {:aggregation [[:count-where [:segment segment-id]]]}
                   (mt/run-mbql-query venues)
@@ -85,10 +87,10 @@
 
 (deftest metric-test
   (mt/test-drivers (mt/normal-drivers-with-feature :basic-aggregations)
-    (mt/with-temp Metric [{metric-id :id} {:table_id   (mt/id :venues)
-                                           :definition {:source-table (mt/id :venues)
-                                                        :aggregation  [:count-where
-                                                                       [:< [:field-id (mt/id :venues :price)] 4]]}}]
+    (t2.with-temp/with-temp [Metric {metric-id :id} {:table_id   (mt/id :venues)
+                                                     :definition {:source-table (mt/id :venues)
+                                                                  :aggregation  [:count-where
+                                                                                 [:< [:field (mt/id :venues :price) nil] 4]]}}]
       (is (= 94
              (->> {:aggregation [[:metric metric-id]]}
                   (mt/run-mbql-query venues)

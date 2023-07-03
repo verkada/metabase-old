@@ -1,13 +1,21 @@
 // TODO: merge with metabase/dashboard/containers/Dashboard.jsx
-import React, { Component } from "react";
+import { createRef, Component } from "react";
 import PropTypes from "prop-types";
 import _ from "underscore";
 
 import { getMainElement } from "metabase/lib/dom";
 
-import DashboardControls from "../../hoc/DashboardControls";
-import { DashboardSidebars } from "../DashboardSidebars";
 import DashboardHeader from "metabase/dashboard/containers/DashboardHeader";
+import SyncedParametersList from "metabase/parameters/components/SyncedParametersList/SyncedParametersList";
+import FilterApplyButton from "metabase/parameters/components/FilterApplyButton";
+import { getVisibleParameters } from "metabase/parameters/utils/ui";
+import DashboardControls from "metabase/dashboard/hoc/DashboardControls";
+import { getValuePopulatedParameters } from "metabase-lib/parameters/utils/parameter-values";
+
+import { DashboardSidebars } from "../DashboardSidebars";
+import DashboardGrid from "../DashboardGrid";
+import { SIDEBAR_NAME } from "../../constants";
+
 import {
   CardsContainer,
   DashboardStyled,
@@ -17,11 +25,11 @@ import {
   ParametersAndCardsContainer,
   ParametersWidgetContainer,
 } from "./Dashboard.styled";
-import DashboardGrid from "../DashboardGrid";
-import SyncedParametersList from "metabase/parameters/components/SyncedParametersList/SyncedParametersList";
-import DashboardEmptyState from "./DashboardEmptyState/DashboardEmptyState";
+import {
+  DashboardEmptyState,
+  TabEmptyState,
+} from "./DashboardEmptyState/DashboardEmptyState";
 import { updateParametersWidgetStickiness } from "./stickyParameters";
-import { getValuePopulatedParameters } from "metabase/parameters/utils/parameter-values";
 
 const SCROLL_THROTTLE_INTERVAL = 1000 / 24;
 
@@ -41,18 +49,21 @@ class Dashboard extends Component {
     isFullscreen: PropTypes.bool,
     isNightMode: PropTypes.bool,
     isSharing: PropTypes.bool,
-    isEditable: PropTypes.bool,
     isEditing: PropTypes.oneOfType([PropTypes.bool, PropTypes.object])
       .isRequired,
     isEditingParameter: PropTypes.bool.isRequired,
     isNavbarOpen: PropTypes.bool.isRequired,
     isHeaderVisible: PropTypes.bool,
     isAdditionalInfoVisible: PropTypes.bool,
+    isNavigatingBackToDashboard: PropTypes.bool,
 
     dashboard: PropTypes.object,
     dashboardId: PropTypes.number,
+    dashcardData: PropTypes.object,
+    selectedTabId: PropTypes.number,
     parameters: PropTypes.array,
     parameterValues: PropTypes.object,
+    draftParameterValues: PropTypes.object,
     editingParameter: PropTypes.object,
 
     editingOnLoad: PropTypes.bool,
@@ -63,6 +74,7 @@ class Dashboard extends Component {
     cancelFetchDashboardCardData: PropTypes.func.isRequired,
     fetchDashboard: PropTypes.func.isRequired,
     fetchDashboardCardData: PropTypes.func.isRequired,
+    fetchDashboardCardMetadata: PropTypes.func.isRequired,
     initialize: PropTypes.func.isRequired,
     onRefreshPeriodChange: PropTypes.func,
     saveDashboardAndCards: PropTypes.func.isRequired,
@@ -85,25 +97,26 @@ class Dashboard extends Component {
       name: PropTypes.string,
       props: PropTypes.object,
     }).isRequired,
+    toggleSidebar: PropTypes.func.isRequired,
     closeSidebar: PropTypes.func.isRequired,
-    openAddQuestionSidebar: PropTypes.func.isRequired,
-    showAddQuestionSidebar: PropTypes.bool.isRequired,
+    closeNavbar: PropTypes.func.isRequired,
+    embedOptions: PropTypes.object,
+    isAutoApplyFilters: PropTypes.bool,
   };
 
   static defaultProps = {
-    isEditable: true,
     isSharing: false,
   };
 
   constructor(props) {
     super(props);
-    this.parametersWidgetRef = React.createRef();
-    this.parametersAndCardsContainerRef = React.createRef();
+    this.parametersWidgetRef = createRef();
   }
 
-  static getDerivedStateFromProps(props, state) {
-    return props.parameters.length !== state.parametersListLength
-      ? { parametersListLength: props.parameters.length }
+  static getDerivedStateFromProps({ parameters }, { parametersListLength }) {
+    const visibleParameters = getVisibleParameters(parameters);
+    return visibleParameters.length !== parametersListLength
+      ? { parametersListLength: visibleParameters.length }
       : null;
   }
 
@@ -113,8 +126,8 @@ class Dashboard extends Component {
   );
 
   // NOTE: all of these lifecycle methods should be replaced with DashboardData HoC in container
-  componentDidMount() {
-    this.loadDashboard(this.props.dashboardId);
+  async componentDidMount() {
+    await this.loadDashboard(this.props.dashboardId);
 
     const main = getMainElement();
     main.addEventListener("scroll", this.throttleParameterWidgetStickiness, {
@@ -125,14 +138,24 @@ class Dashboard extends Component {
     });
   }
 
-  componentDidUpdate(prevProps) {
+  async componentDidUpdate(prevProps) {
     if (prevProps.dashboardId !== this.props.dashboardId) {
-      this.loadDashboard(this.props.dashboardId);
-    } else if (
+      await this.loadDashboard(this.props.dashboardId);
+      this.throttleParameterWidgetStickiness();
+      return;
+    }
+
+    if (!_.isEqual(prevProps.selectedTabId, this.props.selectedTabId)) {
+      this.props.fetchDashboardCardData();
+      this.props.fetchDashboardCardMetadata();
+      return;
+    }
+
+    if (
       !_.isEqual(prevProps.parameterValues, this.props.parameterValues) ||
       (!prevProps.dashboard && this.props.dashboard)
     ) {
-      this.props.fetchDashboardCardData({ reload: false, clear: true });
+      this.props.fetchDashboardCardData({ reload: false, clearCache: true });
     }
   }
 
@@ -153,19 +176,26 @@ class Dashboard extends Component {
       loadDashboardParams,
       location,
       setErrorPage,
+      isNavigatingBackToDashboard,
     } = this.props;
 
-    initialize();
+    initialize({ clearCache: !isNavigatingBackToDashboard });
 
     loadDashboardParams();
 
     try {
-      await fetchDashboard(dashboardId, location.query);
+      await fetchDashboard(dashboardId, location.query, {
+        clearCache: !isNavigatingBackToDashboard,
+      });
       if (editingOnLoad) {
         this.setEditing(this.props.dashboard);
       }
       if (addCardOnLoad != null) {
-        addCardToDashboard({ dashId: dashboardId, cardId: addCardOnLoad });
+        addCardToDashboard({
+          dashId: dashboardId,
+          cardId: addCardOnLoad,
+          tabId: this.props.dashboard.ordered_tabs[0]?.id ?? null,
+        });
       }
     } catch (error) {
       if (error.status === 404) {
@@ -189,20 +219,18 @@ class Dashboard extends Component {
     });
   };
 
-  onToggleAddQuestionSidebar = () => {
-    if (this.props.showAddQuestionSidebar) {
-      this.props.closeSidebar();
-    } else {
-      this.props.openAddQuestionSidebar();
-    }
-  };
-
   onCancel = () => {
     this.props.setSharing(false);
   };
 
   onSharingClick = () => {
     this.props.setSharing(true);
+  };
+
+  onAddQuestion = () => {
+    const { dashboard } = this.props;
+    this.setEditing(dashboard);
+    this.props.toggleSidebar(SIDEBAR_NAME.addQuestion);
   };
 
   render() {
@@ -216,23 +244,35 @@ class Dashboard extends Component {
       isSharing,
       parameters,
       parameterValues,
+      draftParameterValues,
       isNavbarOpen,
-      showAddQuestionSidebar,
       editingParameter,
       setParameterValue,
       setParameterIndex,
       setEditingParameter,
       isHeaderVisible,
+      embedOptions,
+      isAutoApplyFilters,
+      selectedTabId,
     } = this.props;
 
     const { error, isParametersWidgetSticky } = this.state;
 
     const shouldRenderAsNightMode = isNightMode && isFullscreen;
-    const dashboardHasCards = dashboard => dashboard.ordered_cards.length > 0;
+    const dashboardHasCards = dashboard?.ordered_cards.length > 0 ?? false;
+    const tabHasCards =
+      dashboard?.ordered_cards.filter(
+        c =>
+          selectedTabId !== undefined && c.dashboard_tab_id === selectedTabId,
+      ).length > 0 ?? false;
+    const visibleParameters = getVisibleParameters(parameters);
 
     const parametersWidget = (
       <SyncedParametersList
-        parameters={getValuePopulatedParameters(parameters, parameterValues)}
+        parameters={getValuePopulatedParameters(
+          parameters,
+          isAutoApplyFilters ? parameterValues : draftParameterValues,
+        )}
         editingParameter={editingParameter}
         dashboard={dashboard}
         isFullscreen={isFullscreen}
@@ -245,10 +285,10 @@ class Dashboard extends Component {
     );
 
     const shouldRenderParametersWidgetInViewMode =
-      !isEditing && !isFullscreen && parameters.length > 0;
+      !isEditing && !isFullscreen && visibleParameters.length > 0;
 
     const shouldRenderParametersWidgetInEditMode =
-      isEditing && parameters.length > 0;
+      isEditing && visibleParameters.length > 0;
 
     const cardsContainerShouldHaveMarginTop =
       !shouldRenderParametersWidgetInViewMode &&
@@ -276,8 +316,6 @@ class Dashboard extends Component {
                   addParameter={addParameter}
                   parametersWidget={parametersWidget}
                   onSharingClick={this.onSharingClick}
-                  onToggleAddQuestionSidebar={this.onToggleAddQuestionSidebar}
-                  showAddQuestionSidebar={showAddQuestionSidebar}
                 />
 
                 {shouldRenderParametersWidgetInEditMode && (
@@ -294,7 +332,9 @@ class Dashboard extends Component {
             <DashboardBody isEditingOrSharing={isEditing || isSharing}>
               <ParametersAndCardsContainer
                 data-testid="dashboard-parameters-and-cards"
-                ref={element => (this.parametersAndCardsContainerRef = element)}
+                shouldMakeDashboardHeaderStickyAfterScrolling={
+                  !isFullscreen && (isEditing || isSharing)
+                }
               >
                 {shouldRenderParametersWidgetInViewMode && (
                   <ParametersWidgetContainer
@@ -302,23 +342,32 @@ class Dashboard extends Component {
                     ref={element => (this.parametersWidgetRef = element)}
                     isNavbarOpen={isNavbarOpen}
                     isSticky={isParametersWidgetSticky}
+                    topNav={embedOptions?.top_nav}
                   >
                     {parametersWidget}
+                    <FilterApplyButton />
                   </ParametersWidgetContainer>
                 )}
 
                 <CardsContainer
                   addMarginTop={cardsContainerShouldHaveMarginTop}
+                  id="Dashboard-Cards-Container"
                 >
-                  {dashboardHasCards(dashboard) ? (
+                  {dashboardHasCards && tabHasCards ? (
                     <DashboardGrid
                       {...this.props}
+                      dashboard={this.props.dashboard}
                       isNightMode={shouldRenderAsNightMode}
                       onEditingChange={this.setEditing}
                     />
+                  ) : dashboardHasCards ? (
+                    <TabEmptyState isNightMode={shouldRenderAsNightMode} />
                   ) : (
                     <DashboardEmptyState
+                      dashboard={dashboard}
                       isNightMode={shouldRenderAsNightMode}
+                      addQuestion={this.onAddQuestion}
+                      closeNavbar={this.props.closeNavbar}
                     />
                   )}
                 </CardsContainer>
@@ -327,7 +376,6 @@ class Dashboard extends Component {
               <DashboardSidebars
                 {...this.props}
                 onCancel={this.onCancel}
-                showAddQuestionSidebar={showAddQuestionSidebar}
                 setDashboardAttribute={this.setDashboardAttribute}
               />
             </DashboardBody>

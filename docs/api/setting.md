@@ -8,11 +8,6 @@ summary: |
 
 /api/setting endpoints.
 
-  - [GET /api/setting/](#get-apisetting)
-  - [GET /api/setting/:key](#get-apisettingkey)
-  - [PUT /api/setting/](#put-apisetting)
-  - [PUT /api/setting/:key](#put-apisettingkey)
-
 ## `GET /api/setting/`
 
 Get all `Settings` and their values. You must be a superuser or have `setting` permission to do this.
@@ -24,7 +19,7 @@ Fetch a single `Setting`.
 
 ### PARAMS:
 
-*  **`key`** value must be a non-blank string.
+*  **`key`** keyword
 
 ## `PUT /api/setting/`
 
@@ -32,7 +27,7 @@ Update multiple `Settings` values. If called by a non-superuser, only user-local
 
 ### PARAMS:
 
-*  **`settings`**
+*  **`settings`** map from <keyword> to <anything>
 
 ## `PUT /api/setting/:key`
 
@@ -41,7 +36,7 @@ Create/update a `Setting`. If called by a non-admin, only user-local settings ca
 
 ### PARAMS:
 
-*  **`key`** value must be a non-blank string.
+*  **`key`** keyword
 
 *  **`value`**
 

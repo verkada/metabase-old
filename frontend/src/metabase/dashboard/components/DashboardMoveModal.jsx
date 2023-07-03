@@ -1,11 +1,10 @@
 /* eslint-disable react/prop-types */
-import React from "react";
-import { withRouter } from "react-router";
+import { Component } from "react";
 import { connect } from "react-redux";
 import { t, jt } from "ttag";
 import _ from "underscore";
 
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import CollectionMoveModal from "metabase/containers/CollectionMoveModal";
 
 import { color } from "metabase/lib/colors";
@@ -19,16 +18,16 @@ const mapDispatchToProps = {
   setDashboardCollection: Dashboards.actions.setCollection,
 };
 
-class DashboardMoveModalInner extends React.Component {
+class DashboardMoveModalInner extends Component {
   render() {
-    const { params, onClose, setDashboardCollection } = this.props;
-    const dashboardId = Urls.extractEntityId(params.slug);
+    const { dashboard, onClose, setDashboardCollection } = this.props;
+    const title = t`Move dashboard to…`;
     return (
       <CollectionMoveModal
-        title={t`Move dashboard to...`}
+        title={title}
         onClose={onClose}
         onMove={async destination => {
-          await setDashboardCollection({ id: dashboardId }, destination, {
+          await setDashboardCollection({ id: dashboard.id }, destination, {
             notify: {
               message: (
                 <DashboardMoveToast
@@ -45,17 +44,23 @@ class DashboardMoveModalInner extends React.Component {
 }
 
 const DashboardMoveModal = _.compose(
-  withRouter,
   connect(null, mapDispatchToProps),
+  Dashboards.load({
+    id: (state, props) => Urls.extractCollectionId(props.params.slug),
+  }),
 )(DashboardMoveModalInner);
 
 export default DashboardMoveModal;
 
 const DashboardMoveToast = ({ collectionId }) => (
   <ToastRoot>
-    <Icon name="all" mr={1} color="white" />
+    <Icon name="collection" className="mr1" color="white" />
     {jt`Dashboard moved to ${(
-      <Collection.Link id={collectionId} ml={1} color={color("brand")} />
+      <Collection.Link
+        id={collectionId}
+        className="ml1"
+        color={color("brand")}
+      />
     )}`}
   </ToastRoot>
 );

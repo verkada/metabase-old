@@ -1,14 +1,11 @@
 import { getIn, setIn } from "icepick";
 import _ from "underscore";
 
-import {
-  PLUGIN_ADMIN_PERMISSIONS_TABLE_FIELDS_PERMISSION_VALUE,
-  PLUGIN_ADVANCED_PERMISSIONS,
-} from "metabase/plugins";
-import { GroupsPermissions } from "metabase-types/api";
-import Database from "metabase-lib/lib/metadata/Database";
-import Table from "metabase-lib/lib/metadata/Table";
-import {
+import { PLUGIN_ADMIN_PERMISSIONS_TABLE_FIELDS_PERMISSION_VALUE } from "metabase/plugins";
+import type { GroupsPermissions, ConcreteTableId } from "metabase-types/api";
+import type Database from "metabase-lib/metadata/Database";
+import type Table from "metabase-lib/metadata/Table";
+import type {
   DatabaseEntityId,
   DataPermission,
   EntityId,
@@ -17,7 +14,7 @@ import {
 } from "../../types";
 
 export const isRestrictivePermission = (value: string) =>
-  PLUGIN_ADVANCED_PERMISSIONS.isBlockPermission(value) || value === "none";
+  value === "block" || value === "none";
 
 export function getPermission(
   permissions: GroupsPermissions,
@@ -45,7 +42,7 @@ export function updatePermission(
   permissions: GroupsPermissions,
   groupId: number,
   path: Array<number | string>,
-  value: string | number,
+  value: string | undefined,
   entityIds?: any[],
 ) {
   const fullPath = [groupId, ...path];
@@ -202,7 +199,7 @@ export function downgradeNativePermissionsIfNeeded(
 const metadataTableToTableEntityId = (table: Table) => ({
   databaseId: table.db_id,
   schemaName: table.schema_name || "",
-  tableId: table.id,
+  tableId: table.id as ConcreteTableId,
 });
 
 // TODO Atte Keinänen 6/24/17 See if this method could be simplified
@@ -353,7 +350,7 @@ export function updateTablesPermission(
   downgradeNative?: boolean,
 ) {
   const schema = database.schema(schemaName);
-  const tableIds = schema?.tables.map((t: Table) => t.id);
+  const tableIds = schema?.getTables().map((t: Table) => t.id);
 
   permissions = updateSchemasPermission(
     permissions,

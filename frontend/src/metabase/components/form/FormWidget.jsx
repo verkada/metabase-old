@@ -1,11 +1,10 @@
 /* eslint-disable react/prop-types */
-import React, { forwardRef } from "react";
+import { forwardRef } from "react";
 
 import { PLUGIN_FORM_WIDGETS } from "metabase/plugins";
 
 import FormInfoWidget from "./widgets/FormInfoWidget";
 import FormInputWidget from "./widgets/FormInputWidget";
-import FormDateWidget from "./widgets/FormDateWidget";
 import FormEmailWidget from "./widgets/FormEmailWidget";
 import FormTextAreaWidget from "./widgets/FormTextAreaWidget";
 import FormPasswordWidget from "./widgets/FormPasswordWidget";
@@ -24,7 +23,6 @@ import FormTextFileWidget from "./widgets/FormTextFileWidget";
 const WIDGETS = {
   info: FormInfoWidget,
   input: FormInputWidget,
-  date: FormDateWidget,
   email: FormEmailWidget,
   text: FormTextAreaWidget,
   checkbox: FormCheckBoxWidget,
@@ -41,7 +39,7 @@ const WIDGETS = {
   textFile: FormTextFileWidget,
 };
 
-function getWidgetComponent(formField) {
+export function getWidgetComponent(formField) {
   if (typeof formField.type === "string") {
     const widget =
       WIDGETS[formField.type] || PLUGIN_FORM_WIDGETS[formField.type];
@@ -50,6 +48,9 @@ function getWidgetComponent(formField) {
   return formField.type || FormInputWidget;
 }
 
+/**
+ * @deprecated
+ */
 const FormWidget = forwardRef(function FormWidget(
   { field, formField, ...props },
   ref,

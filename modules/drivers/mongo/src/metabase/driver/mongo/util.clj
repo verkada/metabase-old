@@ -1,18 +1,22 @@
 (ns metabase.driver.mongo.util
   "`*mongo-connection*`, `with-mongo-connection`, and other functions shared between several Mongo driver namespaces."
-  (:require [clojure.string :as str]
-            [clojure.tools.logging :as log]
-            [metabase.config :as config]
-            [metabase.driver.util :as driver.u]
-            [metabase.models.database :refer [Database]]
-            [metabase.models.secret :as secret]
-            [metabase.util :as u]
-            [metabase.util.i18n :refer [trs tru]]
-            [metabase.util.ssh :as ssh]
-            [monger.core :as mg]
-            [monger.credentials :as mcred]
-            [toucan.db :as db])
-  (:import [com.mongodb MongoClient MongoClientOptions MongoClientOptions$Builder MongoClientURI]))
+  (:require
+   [clojure.string :as str]
+   [metabase.config :as config]
+   [metabase.driver.util :as driver.u]
+   [metabase.models.database :refer [Database]]
+   [metabase.models.secret :as secret]
+   [metabase.util :as u]
+   [metabase.util.i18n :refer [trs tru]]
+   [metabase.util.log :as log]
+   [metabase.util.ssh :as ssh]
+   [monger.core :as mg]
+   [monger.credentials :as mcred]
+   [toucan2.core :as t2])
+  (:import
+   (com.mongodb MongoClient MongoClientOptions MongoClientOptions$Builder MongoClientURI)))
+
+(set! *warn-on-reflection* true)
 
 (def ^:dynamic ^com.mongodb.DB *mongo-connection*
   "Connection to a Mongo database. Bound by top-level `with-mongo-connection` so it may be reused within its body."
@@ -55,8 +59,7 @@
   serves as a starting point for the changes made below."
   ^MongoClientOptions [{:keys [ssl additional-options ssl-cert
                                ssl-use-client-auth client-ssl-cert client-ssl-key]
-                        :or   {ssl false, ssl-use-client-auth false}
-                        :as   details}]
+                        :or   {ssl false, ssl-use-client-auth false}}]
   (let [client-options (-> (client-options-for-url-params additional-options)
                            client-options->builder
                            (.description config/mb-app-id-string)
@@ -87,7 +90,7 @@
    values for DATABASE, such as plain strings or the usual MB details map."
   [database]
   (cond
-    (integer? database)             (db/select-one [Database :details] :id database)
+    (integer? database)             (t2/select-one [Database :details] :id database)
     (string? database)              {:dbname database}
     (:dbname (:details database))   (:details database) ; entire Database obj
     (:dbname database)              database            ; connection details map only
@@ -103,8 +106,7 @@
   (format "mongodb+srv://%s:%s@%s/%s?authSource=%s" user pass host dbname authdb))
 
 (defn- normalize-details [details]
-  (let [{:keys [dbname host port user pass authdb tunnel-host tunnel-user tunnel-pass additional-options use-srv conn-uri
-                ssl ssl-cert ssl-use-client-auth client-ssl-cert]
+  (let [{:keys [dbname host port user pass authdb additional-options use-srv conn-uri ssl ssl-cert ssl-use-client-auth client-ssl-cert]
          :or   {port 27017, ssl false, ssl-use-client-auth false, use-srv false, ssl-cert "", authdb "admin"}} details
         ;; ignore empty :user and :pass strings
         user (not-empty user)
@@ -192,7 +194,7 @@
   :type)
 
 (defmethod connect :srv
-  [{:keys [^MongoClientURI uri ]}]
+  [{:keys [^MongoClientURI uri]}]
   (let [mongo-client (MongoClient. uri)]
     (if-let [db-name (.getDatabase uri)]
       [mongo-client (.getDB mongo-client db-name)]
@@ -210,7 +212,7 @@
     [mongo-client (mg/get-db mongo-client dbname)]))
 
 (defmethod connect :conn-string
-  [{:keys [conn-string dbname]}]
+  [{:keys [conn-string]}]
   (let [mongo-client (mg/connect-via-uri conn-string)]
     [(:conn mongo-client) (:db mongo-client)]))
 
@@ -221,7 +223,7 @@
   (let [details (database->details database)]
     (ssh/with-ssh-tunnel [details-with-tunnel details]
       (let [connection-info (details->mongo-connection-info (normalize-details details-with-tunnel))
-           [mongo-client db] (connect connection-info)]
+            [mongo-client db] (connect connection-info)]
        (log/debug (u/format-color 'cyan (trs "Opened new MongoDB connection.")))
        (try
          (binding [*mongo-connection* db]

@@ -1,6 +1,14 @@
+---
+title: "Metabase API documentation"
+---
+
 # Metabase API documentation
 
-_These reference files were generated from source comments by running `clojure -M:ee:run api-documentation`_.
+_These reference files were generated from source comments by running:_
+
+```
+clojure -M:ee:run api-documentation
+```
 
 ## About the Metabase API
 
@@ -13,11 +21,14 @@ Check out an introduction to the [Metabase API](https://www.metabase.com/learn/a
 
 ## API endpoints
 
-_* indicates endpoints used for features available on [paid plans](https://www.metabase.com/pricing/)._
+_* indicates endpoints used for features available on [paid plans](https://www.metabase.com/pricing)._
 
 
+- [Action](api/action.md)
 - [Activity](api/activity.md)
+- [Advanced config logs*](api/ee/advanced-config-logs.md)
 - [Advanced permissions application*](api/ee/advanced-permissions-application.md)
+- [Advanced permissions impersonation*](api/ee/advanced-permissions-impersonation.md)
 - [Alert](api/alert.md)
 - [Audit app user*](api/ee/audit-app-user.md)
 - [Automagic dashboards](api/automagic-dashboards.md)
@@ -32,9 +43,12 @@ _* indicates endpoints used for features available on [paid plans](https://www.m
 - [Embed](api/embed.md)
 - [Field](api/field.md)
 - [GeoJSON](api/geojson.md)
+- [Google](api/google.md)
 - [LDAP](api/ldap.md)
 - [Login history](api/login-history.md)
+- [Metabot](api/metabot.md)
 - [Metric](api/metric.md)
+- [Model index](api/model-index.md)
 - [Native query snippet](api/native-query-snippet.md)
 - [Notify](api/notify.md)
 - [Permissions](api/permissions.md)
@@ -45,11 +59,13 @@ _* indicates endpoints used for features available on [paid plans](https://www.m
 - [Pulse](api/pulse.md)
 - [Revision](api/revision.md)
 - [SSO*](api/ee/sso.md)
+- [SSO SAML](api/sso-saml.md)
 - [Sandbox GTAP*](api/ee/sandbox-gtap.md)
 - [Sandbox table*](api/ee/sandbox-table.md)
 - [Sandbox user*](api/ee/sandbox-user.md)
 - [Search](api/search.md)
 - [Segment](api/segment.md)
+- [Serialization serialize*](api/ee/serialization-serialize.md)
 - [Session](api/session.md)
 - [Setting](api/setting.md)
 - [Setup](api/setup.md)

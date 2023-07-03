@@ -1,5 +1,5 @@
-import { TYPE } from "metabase/lib/types";
 import { t } from "ttag";
+import { TYPE } from "metabase-lib/types/constants";
 
 export const field_semantic_types = [
   /* Overall Row */
@@ -152,7 +152,7 @@ export const field_semantic_types = [
     id: TYPE.Birthdate,
     name: t`Birthday`,
     section: t`Profile`,
-    icon: "balloons",
+    icon: "birthday",
   },
   {
     id: TYPE.Company,

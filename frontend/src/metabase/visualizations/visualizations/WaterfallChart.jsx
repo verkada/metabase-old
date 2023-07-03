@@ -1,7 +1,12 @@
 import { t } from "ttag";
+import { assocIn } from "icepick";
+import { color } from "metabase/lib/colors";
+import {
+  getDefaultSize,
+  getMinSize,
+} from "metabase/visualizations/shared/utils/sizes";
 import LineAreaBarChart from "../components/LineAreaBarChart";
 import { waterfallRenderer } from "../lib/LineAreaBarRenderer";
-import { assocIn } from "icepick";
 
 import {
   GRAPH_DATA_SETTINGS,
@@ -9,15 +14,17 @@ import {
   GRAPH_DISPLAY_VALUES_SETTINGS,
 } from "../lib/settings/graph";
 
-import { color } from "metabase/lib/colors";
-
 export default class WaterfallChart extends LineAreaBarChart {
   static uiName = t`Waterfall`;
   static identifier = "waterfall";
   static iconName = "waterfall";
   static noun = t`waterfall chart`;
 
+  static minSize = getMinSize("waterfall");
+  static defaultSize = getDefaultSize("waterfall");
+
   static maxMetricsSupported = 1;
+  static maxDimensionsSupported = 1;
 
   static settings = {
     ...GRAPH_AXIS_SETTINGS,
@@ -38,6 +45,7 @@ export default class WaterfallChart extends LineAreaBarChart {
       title: t`Show total`,
       widget: "toggle",
       default: true,
+      inline: true,
     },
     "waterfall.total_color": {
       section: t`Display`,

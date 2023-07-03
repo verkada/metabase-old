@@ -1,5 +1,5 @@
-import React from "react";
 import { t } from "ttag";
+
 import { PLUGIN_COLLECTIONS } from "metabase/plugins";
 import * as Urls from "metabase/lib/urls";
 import EntityMenu from "metabase/components/EntityMenu";
@@ -48,20 +48,18 @@ const CollectionMenu = ({
   }
 
   if (!isRoot && !isPersonal && canWrite) {
-    items.push(
-      {
-        title: t`Move`,
-        icon: "move",
-        link: `${url}/move`,
-        event: `${ANALYTICS_CONTEXT};Edit Menu;Move Collection`,
-      },
-      {
-        title: t`Archive`,
-        icon: "archive",
-        link: `${url}/archive`,
-        event: `${ANALYTICS_CONTEXT};Edit Menu;Archive Collection`,
-      },
-    );
+    items.push({
+      title: t`Move`,
+      icon: "move",
+      link: `${url}/move`,
+      event: `${ANALYTICS_CONTEXT};Edit Menu;Move Collection`,
+    });
+    items.push({
+      title: t`Archive`,
+      icon: "archive",
+      link: `${url}/archive`,
+      event: `${ANALYTICS_CONTEXT};Edit Menu;Archive Collection`,
+    });
   }
 
   if (items.length > 0) {
@@ -70,6 +68,7 @@ const CollectionMenu = ({
         items={items}
         triggerIcon="ellipsis"
         tooltip={t`Move, archive, and more...`}
+        tooltipPlacement="bottom"
       />
     );
   } else {
@@ -77,4 +76,5 @@ const CollectionMenu = ({
   }
 };
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default CollectionMenu;

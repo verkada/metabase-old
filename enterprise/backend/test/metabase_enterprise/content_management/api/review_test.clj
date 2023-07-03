@@ -1,10 +1,11 @@
 (ns metabase-enterprise.content-management.api.review-test
-  (:require [clojure.test :refer :all]
-            [metabase.models.card :refer [Card]]
-            [metabase.models.moderation-review :as moderation-review :refer [ModerationReview]]
-            [metabase.public-settings.premium-features-test :as premium-features-test]
-            [metabase.test :as mt]
-            [toucan.db :as db]))
+  (:require
+   [clojure.test :refer :all]
+   [metabase.models.card :refer [Card]]
+   [metabase.models.moderation-review :as moderation-review :refer [ModerationReview]]
+   [metabase.public-settings.premium-features-test :as premium-features-test]
+   [metabase.test :as mt]
+   [toucan2.core :as t2]))
 
 (defn- normalized-response
   [moderation-review]
@@ -23,7 +24,7 @@
                                       :moderated_item_type "card"})))))
 
     (premium-features-test/with-premium-features #{:content-management}
-      (mt/with-temp* [Card [{card-id :id :as card} {:name "Test Card"}]]
+      (mt/with-temp* [Card [{card-id :id} {:name "Test Card"}]]
         (mt/with-model-cleanup [ModerationReview]
           (letfn [(moderate! [status text]
                     (normalized-response
@@ -32,7 +33,7 @@
                                             :status              status
                                             :moderated_item_id   card-id
                                             :moderated_item_type "card"})))
-                  (review-count [] (db/count ModerationReview
+                  (review-count [] (t2/count ModerationReview
                                      :moderated_item_id card-id
                                      :moderated_item_type "card"))]
             (testing "Non admin cannot create a moderation review"
@@ -61,17 +62,17 @@
                          {:text "Looks good to me" :most_recent false :status "verified"}}
                        (into #{}
                              (map #(select-keys % [:text :status :most_recent]))
-                             (db/select ModerationReview
+                             (t2/select ModerationReview
                                :moderated_item_id card-id
                                :moderated_item_type "card"))))))
             (testing "Ensures we never have more than `modreview/max-moderation-reviews`"
-              (db/insert-many! ModerationReview (repeat (* 2 moderation-review/max-moderation-reviews)
-                                                        {:moderated_item_id   card-id
-                                                         :moderated_item_type "card"
-                                                         :moderator_id        (mt/user->id :crowberto)
-                                                         :most_recent         false
-                                                         :status              "verified"
-                                                         :text                "old review"}))
+              (t2/insert! ModerationReview (repeat (* 2 moderation-review/max-moderation-reviews)
+                                                   {:moderated_item_id   card-id
+                                                    :moderated_item_type "card"
+                                                    :moderator_id        (mt/user->id :crowberto)
+                                                    :most_recent         false
+                                                    :status              "verified"
+                                                    :text                "old review"}))
               ;; manually inserted many
 
               (is (> (review-count) moderation-review/max-moderation-reviews))
@@ -82,7 +83,6 @@
             (testing "Only allows for valid status"
               (doseq [status moderation-review/statuses]
                 (is (= status (:status (moderate! status "good")))))
-              ;; i wish this was better. Should have a better error message and honestly shouldn't be a 500
               (mt/user-http-request :crowberto :post 400 "moderation-review"
                                     {:text                "not a chance this works"
                                      :status              "invalid status"

@@ -1,14 +1,13 @@
 /* eslint "react/prop-types": "error" */
 
-import React from "react";
 import PropTypes from "prop-types";
-import Card from "metabase/components/Card";
-import Icon from "metabase/components/Icon";
+import cx from "classnames";
+import { t, jt } from "ttag";
+import { Icon } from "metabase/core/components/Icon";
 import Text from "metabase/components/type/Text";
 import Link from "metabase/core/components/Link";
 import Sidebar from "metabase/dashboard/components/Sidebar";
-import cx from "classnames";
-import { t, jt } from "ttag";
+import { ChannelCard } from "metabase/sharing/components/NewPulseSidebar.styled";
 
 function NewPulseSidebar({
   onCancel,
@@ -23,12 +22,12 @@ function NewPulseSidebar({
         <h4>{t`Create a dashboard subscription`}</h4>
       </div>
       <div className="my1 mx4">
-        <Card
+        <ChannelCard
           flat
           className={cx("mt1 mb3", {
-            "cursor-pointer text-white-hover bg-brand-hover hover-parent hover--inherit":
-              emailConfigured,
+            "hover-parent hover--inherit": emailConfigured,
           })}
+          isConfigured={emailConfigured}
           onClick={onNewEmailPulse}
         >
           <div className="px3 pt3 pb2">
@@ -63,20 +62,20 @@ function NewPulseSidebar({
                 t`You can send this dashboard regularly to users or email addresses.`}
             </Text>
           </div>
-        </Card>
-        <Card
+        </ChannelCard>
+        <ChannelCard
           flat
           className={cx({
-            "cursor-pointer text-white-hover bg-brand-hover hover-parent hover--inherit":
-              slackConfigured,
+            "hover-parent hover--inherit": slackConfigured,
           })}
+          isConfigured={slackConfigured}
           onClick={onNewSlackPulse}
         >
           <div className="px3 pt3 pb2">
             <div className="flex align-center mb1">
               <Icon
                 name={slackConfigured ? "slack_colorized" : "slack"}
-                size={24}
+                size={16}
                 className={cx("mr1", {
                   "text-light": !slackConfigured,
                   "hover-child hover--inherit": slackConfigured,
@@ -102,7 +101,7 @@ function NewPulseSidebar({
                 t`Pick a channel and a schedule, and Metabase will do the rest.`}
             </Text>
           </div>
-        </Card>
+        </ChannelCard>
       </div>
     </Sidebar>
   );

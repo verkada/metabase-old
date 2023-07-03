@@ -1,27 +1,36 @@
-import React, { FormHTMLAttributes } from "react";
-import { render, screen } from "@testing-library/react";
+import fetchMock from "fetch-mock";
 import userEvent from "@testing-library/user-event";
-import NewsletterForm from "./NewsletterForm";
+import {
+  createMockSetupState,
+  createMockState,
+  createMockUserInfo,
+} from "metabase-types/store/mocks";
+import { renderWithProviders, screen } from "__support__/ui";
+import { SUBSCRIBE_URL } from "../../constants";
+import { NewsletterForm } from "./NewsletterForm";
 
-const FormMock = (props: FormHTMLAttributes<HTMLFormElement>) => (
-  <form {...props}>
-    <button>Subscribe</button>
-  </form>
-);
+const USER_EMAIL = "user@metabase.test";
 
-jest.mock("metabase/containers/Form", () => FormMock);
+const setup = () => {
+  const state = createMockState({
+    setup: createMockSetupState({
+      user: createMockUserInfo({
+        email: USER_EMAIL,
+      }),
+    }),
+  });
 
-jest.mock("metabase/entities/users", () => ({
-  forms: { newsletter: jest.fn() },
-}));
+  fetchMock.post(SUBSCRIBE_URL, {});
+  renderWithProviders(<NewsletterForm />, { storeInitialState: state });
+};
 
 describe("NewsletterForm", () => {
-  it("allows to submit the form with an email", async () => {
-    const onSubscribe = jest.fn();
+  it("should allow to submit the form with the provided email", async () => {
+    setup();
+    expect(screen.getByDisplayValue(USER_EMAIL)).toBeInTheDocument();
 
-    render(<NewsletterForm onSubscribe={onSubscribe} />);
     userEvent.click(screen.getByText("Subscribe"));
-
     expect(await screen.findByText(/You're subscribed/)).toBeInTheDocument();
+    expect(fetchMock.done(SUBSCRIBE_URL)).toBe(true);
   });
 });

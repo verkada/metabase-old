@@ -1,13 +1,14 @@
 (ns metabase.query-processor.middleware.resolve-joins-test
-  (:require [clojure.test :refer :all]
-            [metabase.models :refer [Database Table]]
-            [metabase.query-processor :as qp]
-            [metabase.query-processor.middleware.resolve-joins :as resolve-joins]
-            [metabase.query-processor.store :as qp.store]
-            [metabase.query-processor.test-util :as qp.test-util]
-            [metabase.test :as mt]))
+  (:require
+   [clojure.test :refer :all]
+   [metabase.models :refer [Database Table]]
+   [metabase.query-processor :as qp]
+   [metabase.query-processor.middleware.resolve-joins :as resolve-joins]
+   [metabase.query-processor.store :as qp.store]
+   [metabase.query-processor.test-util :as qp.test-util]
+   [metabase.test :as mt]))
 
-(defn- resolve-joins [{{:keys [source-table]} :query, :as query}]
+(defn- resolve-joins [query]
   (mt/with-everything-store
     (resolve-joins/resolve-joins query)))
 

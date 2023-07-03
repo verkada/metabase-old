@@ -8,19 +8,6 @@ summary: |
 
 /api/table endpoints.
 
-  - [GET /api/table/](#get-apitable)
-  - [GET /api/table/:id](#get-apitableid)
-  - [GET /api/table/:id/fks](#get-apitableidfks)
-  - [GET /api/table/:id/query_metadata](#get-apitableidquery_metadata)
-  - [GET /api/table/:id/related](#get-apitableidrelated)
-  - [GET /api/table/card__:id/fks](#get-apitablecard__idfks)
-  - [GET /api/table/card__:id/query_metadata](#get-apitablecard__idquery_metadata)
-  - [POST /api/table/:id/discard_values](#post-apitableiddiscard_values)
-  - [POST /api/table/:id/rescan_values](#post-apitableidrescan_values)
-  - [PUT /api/table/](#put-apitable)
-  - [PUT /api/table/:id](#put-apitableid)
-  - [PUT /api/table/:id/fields/order](#put-apitableidfieldsorder)
-
 ## `GET /api/table/`
 
 Get all `Tables`.
@@ -31,9 +18,9 @@ Get `Table` with ID.
 
 ### PARAMS:
 
-*  **`id`** 
+*  **`id`** value must be an integer greater than zero.
 
-*  **`include_editable_data_model`**
+*  **`include_editable_data_model`** nullable boolean
 
 ## `GET /api/table/:id/fks`
 
@@ -41,7 +28,7 @@ Get all foreign keys whose destination is a `Field` that belongs to this `Table`
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `GET /api/table/:id/query_metadata`
 
@@ -72,7 +59,7 @@ Return related entities.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `GET /api/table/card__:id/fks`
 
@@ -94,7 +81,7 @@ Discard the FieldValues belonging to the Fields in this Table. Only applies to f
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `POST /api/table/:id/rescan_values`
 
@@ -103,7 +90,7 @@ Manually trigger an update for the FieldValues for the Fields belonging to this 
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `PUT /api/table/`
 
@@ -157,9 +144,9 @@ Reorder fields.
 
 ### PARAMS:
 
-*  **`id`** 
+*  **`id`** value must be an integer greater than zero.
 
-*  **`field_order`** value must be an array. Each value must be an integer greater than zero.
+*  **`field_order`** sequence of value must be an integer greater than zero.
 
 ---
 

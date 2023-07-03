@@ -1,7 +1,6 @@
 (ns metabase.driver.druid.query-processor
   (:require [clojure.core.match :refer [match]]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
             [metabase.driver.common :as driver.common]
             [metabase.driver.druid.js :as druid.js]
             [metabase.mbql.schema :as mbql.s]
@@ -15,7 +14,10 @@
             [metabase.util :as u]
             [metabase.util.date-2 :as u.date]
             [metabase.util.i18n :refer [trs tru]]
+            [metabase.util.log :as log]
             [schema.core :as s]))
+
+(set! *warn-on-reflection* true)
 
 (def ^:private ^:const topN-max-results
   "Maximum number of rows the topN query in Druid should return. Huge values cause significant issues with the engine.
@@ -198,7 +200,7 @@
    ;; if this is a case-insensitive search we'll lower-case the search pattern and add an extraction function to
    ;; lower-case the dimension values we're matching against
    :pattern      (cond-> pattern
-                   (not case-sensitive?) str/lower-case)
+                   (not case-sensitive?) u/lower-case-en)
    :extractionFn (when-not case-sensitive?
                    {:type :lower})})
 
@@ -667,8 +669,8 @@
                         {:aggregations [(ag:doubleMax ag-field (or output-name :max))]}])))
 
 (s/defn ^:private handle-aggregation
-  [query-type, ag-clause :- mbql.s/Aggregation, druid-query]
-  (let [output-name               (annotate/aggregation-name ag-clause)
+  [query-type ag-clause :- mbql.s/Aggregation druid-query]
+  (let [output-name               (annotate/aggregation-name *query* ag-clause)
         [ag-type ag-field & args] (mbql.u/match-one ag-clause
                                     [:aggregation-options ag & _] #_:clj-kondo/ignore (recur ag)
                                     _                             &match)]
@@ -725,11 +727,11 @@
     ;; If it's a named expression, we want to preserve the included name, so recurse, but merge in the name
     [:aggregation-options ag _]
     (merge (expression-post-aggregation (second expression))
-           {:name (annotate/aggregation-name expression)})
+           {:name (annotate/aggregation-name *query* expression)})
 
     _
     {:type   :arithmetic
-     :name   (annotate/aggregation-name expression)
+     :name   (annotate/aggregation-name *query* expression)
      :fn     operator
      :fields (vec (for [arg args]
                     (mbql.u/match-one arg
@@ -766,14 +768,14 @@
     x))
 
 (defn- handle-expression-aggregation
-  [query-type [operator & args, :as expression] druid-query]
+  [query-type expression druid-query]
   ;; filter out constants from the args list
-  (let [expression    (add-expression-aggregation-output-names expression)
+  (let [expression  (add-expression-aggregation-output-names expression)
         ;; The QP will automatically add a generated name to the expression, if it's there, unwrap it before looking
         ;; for the aggregation
-        ags           (expression->actual-ags (unwrap-name expression))
+        ags         (expression->actual-ags (unwrap-name expression))
         druid-query (handle-aggregations query-type {:aggregation ags} druid-query)
-        post-agg      (expression-post-aggregation expression)]
+        post-agg    (expression-post-aggregation expression)]
     (-> druid-query
         (update :projections conj (keyword (:name post-agg)))
         (update-in [:query :postAggregations] concat [post-agg]))))

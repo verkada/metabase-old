@@ -1,4 +1,4 @@
-import React, {
+import {
   ChangeEvent,
   FocusEvent,
   forwardRef,
@@ -17,7 +17,6 @@ export type NumericInputAttributes = Omit<
 
 export interface NumericInputProps extends NumericInputAttributes {
   value?: number | string;
-  inputRef?: Ref<HTMLInputElement>;
   error?: boolean;
   fullWidth?: boolean;
   onChange?: (value: number | undefined) => void;
@@ -75,4 +74,5 @@ const NumericInput = forwardRef(function NumericInput(
   );
 });
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default NumericInput;

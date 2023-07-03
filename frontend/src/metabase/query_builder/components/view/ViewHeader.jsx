@@ -1,37 +1,37 @@
-import React, { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useState } from "react";
 import PropTypes from "prop-types";
 import { t } from "ttag";
 import cx from "classnames";
+import { usePrevious } from "react-use";
 
 import * as Urls from "metabase/lib/urls";
+import { useDispatch, useSelector } from "metabase/lib/redux";
 import { SERVER_ERROR_TYPES } from "metabase/lib/errors";
 import MetabaseSettings from "metabase/lib/settings";
-
-import Button from "metabase/core/components/Button";
-import Link from "metabase/core/components/Link";
-import ViewButton from "metabase/query_builder/components/view/ViewButton";
-
-import { usePrevious } from "metabase/hooks/use-previous";
 import { useToggle } from "metabase/hooks/use-toggle";
-import { useOnMount } from "metabase/hooks/use-on-mount";
+import Link from "metabase/core/components/Link";
+import Tooltip from "metabase/core/components/Tooltip";
 
-import { MODAL_TYPES } from "metabase/query_builder/constants";
+import ViewButton from "metabase/query_builder/components/view/ViewButton";
 import SavedQuestionHeaderButton from "metabase/query_builder/components/SavedQuestionHeaderButton/SavedQuestionHeaderButton";
 
+import { navigateBackToDashboard } from "metabase/query_builder/actions";
+import { MODAL_TYPES } from "metabase/query_builder/constants";
+import { getDashboard } from "metabase/query_builder/selectors";
+import * as ML_Urls from "metabase-lib/urls";
 import RunButtonWithTooltip from "../RunButtonWithTooltip";
-
+import QuestionActions from "../QuestionActions";
 import { HeadBreadcrumbs } from "./HeaderBreadcrumbs";
 import QuestionDataSource from "./QuestionDataSource";
 import QuestionDescription from "./QuestionDescription";
 import QuestionNotebookButton from "./QuestionNotebookButton";
+import ConvertQueryButton from "./ConvertQueryButton";
 import QuestionFilters, {
   FilterHeaderToggle,
   FilterHeader,
   QuestionFilterWidget,
 } from "./QuestionFilters";
 import { QuestionSummarizeWidget } from "./QuestionSummaries";
-import QuestionActions from "../QuestionActions";
-import NativeQueryButton from "./NativeQueryButton";
 import {
   AdHocViewHeading,
   SaveButton,
@@ -46,6 +46,8 @@ import {
   HeaderDivider,
   ViewHeaderActionPanel,
   ViewHeaderIconButtonContainer,
+  BackButton,
+  BackButtonContainer,
 } from "./ViewHeader.styled";
 
 const viewTitleHeaderPropTypes = {
@@ -67,10 +69,10 @@ const viewTitleHeaderPropTypes = {
   isShowingQuestionDetailsSidebar: PropTypes.bool,
   isObjectDetail: PropTypes.bool,
   isAdditionalInfoVisible: PropTypes.bool,
-  isWritebackEnabled: PropTypes.bool,
 
   runQuestionQuery: PropTypes.func,
   cancelQuery: PropTypes.func,
+  updateQuestion: PropTypes.func,
 
   onOpenModal: PropTypes.func,
   onEditSummary: PropTypes.func,
@@ -82,7 +84,7 @@ const viewTitleHeaderPropTypes = {
 };
 
 export function ViewTitleHeader(props) {
-  const { question, className, style, isNavBarOpen } = props;
+  const { question, className, style, isNavBarOpen, updateQuestion } = props;
 
   const [
     areFiltersExpanded,
@@ -112,6 +114,13 @@ export function ViewTitleHeader(props) {
   const isSummarized =
     isStructured && question.query().topLevelQuery().hasAggregations();
 
+  const onQueryChange = useCallback(
+    newQuery => {
+      updateQuestion(newQuery.question(), { run: true });
+    },
+    [updateQuestion],
+  );
+
   return (
     <>
       <ViewHeaderContainer
@@ -120,6 +129,7 @@ export function ViewTitleHeader(props) {
         data-testid="qb-header"
         isNavBarOpen={isNavBarOpen}
       >
+        <DashboardBackButton />
         {isSaved ? (
           <SavedQuestionLeftSide {...props} />
         ) : (
@@ -138,6 +148,7 @@ export function ViewTitleHeader(props) {
           areFiltersExpanded={areFiltersExpanded}
           onExpandFilters={expandFilters}
           onCollapseFilters={collapseFilters}
+          onQueryChange={onQueryChange}
         />
       </ViewHeaderContainer>
       {QuestionFilters.shouldRender(props) && (
@@ -145,9 +156,40 @@ export function ViewTitleHeader(props) {
           {...props}
           expanded={areFiltersExpanded}
           question={question}
+          onQueryChange={onQueryChange}
         />
       )}
     </>
+  );
+}
+
+function DashboardBackButton() {
+  const dashboard = useSelector(getDashboard);
+  const dispatch = useDispatch();
+
+  const handleClick = () => {
+    dispatch(navigateBackToDashboard(dashboard.id));
+  };
+
+  if (!dashboard) {
+    return null;
+  }
+
+  const label = t`Back to ${dashboard.name}`;
+
+  return (
+    <Tooltip tooltip={label}>
+      <BackButtonContainer>
+        <BackButton
+          as={Link}
+          to={Urls.dashboard(dashboard)}
+          round
+          icon="arrow_left"
+          aria-label={label}
+          onClick={handleClick}
+        />
+      </BackButtonContainer>
+    </Tooltip>
   );
 }
 
@@ -171,12 +213,12 @@ function SavedQuestionLeftSide(props) {
 
   const [showSubHeader, setShowSubHeader] = useState(true);
 
-  useOnMount(() => {
+  useEffect(() => {
     const timerId = setTimeout(() => {
       setShowSubHeader(false);
     }, 4000);
     return () => clearTimeout(timerId);
-  });
+  }, []);
 
   const hasLastEditInfo = question.lastEditInfo() != null;
   const isDataset = question.isDataset();
@@ -184,7 +226,7 @@ function SavedQuestionLeftSide(props) {
   const onHeaderChange = useCallback(
     name => {
       if (name && name !== question.displayName()) {
-        onSave(question.setDisplayName(name).card());
+        onSave(question.setDisplayName(name));
       }
     },
     [question, onSave],
@@ -320,11 +362,11 @@ ViewTitleHeaderRightSide.propTypes = {
   isRunning: PropTypes.bool,
   isNativeEditorOpen: PropTypes.bool,
   isShowingSummarySidebar: PropTypes.bool,
-  isWritebackEnabled: PropTypes.bool,
   isDirty: PropTypes.bool,
   isResultDirty: PropTypes.bool,
   isActionListVisible: PropTypes.bool,
   runQuestionQuery: PropTypes.func,
+  updateQuestion: PropTypes.func.isRequired,
   cancelQuery: PropTypes.func,
   onOpenModal: PropTypes.func,
   onEditSummary: PropTypes.func,
@@ -339,7 +381,8 @@ ViewTitleHeaderRightSide.propTypes = {
   onOpenQuestionInfo: PropTypes.func,
   onCloseQuestionInfo: PropTypes.func,
   isShowingQuestionInfoSidebar: PropTypes.bool,
-  onModelPersistenceChange: PropTypes.bool,
+  onModelPersistenceChange: PropTypes.func,
+  onQueryChange: PropTypes.func,
 };
 
 function ViewTitleHeaderRightSide(props) {
@@ -356,7 +399,6 @@ function ViewTitleHeaderRightSide(props) {
     isRunning,
     isNativeEditorOpen,
     isShowingSummarySidebar,
-    isWritebackEnabled,
     isDirty,
     isResultDirty,
     isActionListVisible,
@@ -374,6 +416,7 @@ function ViewTitleHeaderRightSide(props) {
     onCloseQuestionInfo,
     onOpenQuestionInfo,
     onModelPersistenceChange,
+    onQueryChange,
   } = props;
   const isShowingNotebook = queryBuilderMode === "notebook";
   const query = question.query();
@@ -399,8 +442,6 @@ function ViewTitleHeaderRightSide(props) {
   const hasRunButton =
     isRunnable && !isNativeEditorOpen && !isMissingPermissions;
 
-  const hasNewRowButton = isWritebackEnabled && !isNative && query.isRaw();
-
   const handleInfoClick = useCallback(() => {
     if (isShowingQuestionInfoSidebar) {
       onCloseQuestionInfo();
@@ -408,6 +449,11 @@ function ViewTitleHeaderRightSide(props) {
       onOpenQuestionInfo();
     }
   }, [isShowingQuestionInfoSidebar, onOpenQuestionInfo, onCloseQuestionInfo]);
+
+  const getRunButtonLabel = useCallback(
+    () => (isRunning ? t`Cancel` : t`Refresh`),
+    [isRunning],
+  );
 
   return (
     <ViewHeaderActionPanel data-testid="qb-header-action-panel">
@@ -418,16 +464,8 @@ function ViewTitleHeaderRightSide(props) {
           expanded={areFiltersExpanded}
           onExpand={onExpandFilters}
           onCollapse={onCollapseFilters}
+          onQueryChange={onQueryChange}
         />
-      )}
-      {hasNewRowButton && (
-        <Button
-          primary
-          icon="add"
-          onClick={() => onOpenModal(MODAL_TYPES.INSERT_ROW)}
-        >
-          {t`New row`}
-        </Button>
       )}
       {QuestionFilterWidget.shouldRender(props) && (
         <QuestionFilterWidget
@@ -459,14 +497,8 @@ function ViewTitleHeaderRightSide(props) {
           />
         </ViewHeaderIconButtonContainer>
       )}
-      {NativeQueryButton.shouldRender(props) && (
-        <ViewHeaderIconButtonContainer>
-          <NativeQueryButton
-            size={16}
-            question={question}
-            data-metabase-event="Notebook Mode; Convert to SQL Click"
-          />
-        </ViewHeaderIconButtonContainer>
+      {ConvertQueryButton.shouldRender(props) && (
+        <ConvertQueryButton question={question} onOpenModal={onOpenModal} />
       )}
       {hasExploreResultsLink && <ExploreResultsLink question={question} />}
       {hasRunButton && !isShowingNotebook && (
@@ -484,6 +516,7 @@ function ViewTitleHeaderRightSide(props) {
             isDirty={isResultDirty}
             onRun={() => runQuestionQuery({ ignoreCache: true })}
             onCancel={cancelQuery}
+            getTooltip={getRunButtonLabel}
           />
         </ViewHeaderIconButtonContainer>
       )}
@@ -527,11 +560,9 @@ ExploreResultsLink.propTypes = {
 };
 
 function ExploreResultsLink({ question }) {
-  const url = question
-    .composeThisQuery()
-    .setDisplay("table")
-    .setSettings({})
-    .getUrl();
+  const url = ML_Urls.getUrl(
+    question.composeThisQuery().setDisplay("table").setSettings({}),
+  );
 
   return (
     <Link to={url}>

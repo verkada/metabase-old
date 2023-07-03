@@ -1,10 +1,9 @@
-import React, { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { t } from "ttag";
 
-import Filter from "metabase-lib/lib/queries/structured/Filter";
-import Field from "metabase-lib/lib/metadata/Field";
-
 import FieldValuesWidget from "metabase/components/FieldValuesWidget";
+import Filter from "metabase-lib/queries/structured/Filter";
+import Field from "metabase-lib/metadata/Field";
 
 import {
   ValuesPickerContainer,
@@ -12,6 +11,8 @@ import {
   NumberInput,
   NumberSeparator,
 } from "./InlineValuePicker.styled";
+
+import { getFieldWidth } from "./utils";
 
 interface InlineValuePickerProps {
   filter: Filter;
@@ -40,18 +41,17 @@ export function InlineValuePicker({
     "not-empty",
   ].includes(filter.operatorName());
 
+  const containerWidth = getFieldWidth(field, filter);
+
   return (
-    <>
-      <ValuesPickerContainer data-testid="value-picker">
-        {!hideArgumentSelector && (
-          <ValuesInput
-            filter={filter}
-            field={field}
-            onChange={changeArguments}
-          />
-        )}
-      </ValuesPickerContainer>
-    </>
+    <ValuesPickerContainer
+      data-testid="value-picker"
+      fieldWidth={containerWidth}
+    >
+      {!hideArgumentSelector && (
+        <ValuesInput filter={filter} field={field} onChange={changeArguments} />
+      )}
+    </ValuesPickerContainer>
   );
 }
 

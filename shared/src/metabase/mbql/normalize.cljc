@@ -28,13 +28,14 @@
   Removing empty clauses like `{:aggregation nil}` or `{:breakout []}`.
 
   Token normalization occurs first, followed by canonicalization, followed by removing empty clauses."
-  (:require [clojure.set :as set]
-            [clojure.walk :as walk]
-            [medley.core :as m]
-            [metabase.mbql.util :as mbql.u]
-            [metabase.mbql.util.match :as mbql.match]
-            [metabase.shared.util.i18n :as i18n]
-            [metabase.shared.util.log :as log]))
+  (:require
+   [clojure.set :as set]
+   [clojure.walk :as walk]
+   [medley.core :as m]
+   [metabase.mbql.util :as mbql.u]
+   [metabase.mbql.util.match :as mbql.match]
+   [metabase.shared.util.i18n :as i18n]
+   [metabase.util.log :as log]))
 
 (defn- mbql-clause?
   "True if `x` is an MBQL clause (a sequence with a token as its first arg). (This is different from the implementation
@@ -77,6 +78,12 @@
 
 (defmulti ^:private normalize-mbql-clause-tokens
   (comp maybe-normalize-token first))
+
+(defmethod normalize-mbql-clause-tokens :aggregation
+  ;; nil options should be removed from aggregation references (`[:aggregation 0]`).
+  [[_ aggregation-index option]]
+  (cond-> [:aggregation aggregation-index]
+    (some? option) (conj option)))
 
 (defmethod normalize-mbql-clause-tokens :expression
   ;; For expression references (`[:expression \"my_expression\"]`) keep the arg as is but make sure it is a string.
@@ -148,6 +155,33 @@
 (defmethod normalize-mbql-clause-tokens :interval
   [[_ amount unit]]
   [:interval amount (maybe-normalize-token unit)])
+
+(defmethod normalize-mbql-clause-tokens :datetime-add
+  [[_ field amount unit]]
+  [:datetime-add (normalize-tokens field :ignore-path) amount (maybe-normalize-token unit)])
+
+(defmethod normalize-mbql-clause-tokens :datetime-subtract
+  [[_ field amount unit]]
+  [:datetime-subtract (normalize-tokens field :ignore-path) amount (maybe-normalize-token unit)])
+
+(defmethod normalize-mbql-clause-tokens :get-week
+  [[_ field mode]]
+  (if mode
+    [:get-week (normalize-tokens field :ignore-path) (maybe-normalize-token mode)]
+    [:get-week (normalize-tokens field :ignore-path)]))
+
+(defmethod normalize-mbql-clause-tokens :temporal-extract
+  [[_ field unit mode]]
+  (if mode
+    [:temporal-extract (normalize-tokens field :ignore-path) (maybe-normalize-token unit) (maybe-normalize-token mode)]
+    [:temporal-extract (normalize-tokens field :ignore-path) (maybe-normalize-token unit)]))
+
+(defmethod normalize-mbql-clause-tokens :datetime-diff
+  [[_ x y unit]]
+  [:datetime-diff
+   (normalize-tokens x :ignore-path)
+   (normalize-tokens y :ignore-path)
+   (maybe-normalize-token unit)])
 
 (defmethod normalize-mbql-clause-tokens :value
   ;; The args of a `value` clause shouldn't be normalized.
@@ -257,11 +291,16 @@
                  (assoc :name tag-name))])))
    template-tags))
 
-(defn- normalize-query-parameter [{:keys [type target], :as param}]
+(defn normalize-query-parameter
+  "Normalize a parameter in the query `:parameters` list."
+  [{:keys [type target id values_source_config], :as param}]
   (cond-> param
+    id                   (update :id mbql.u/qualified-name)
     ;; some things that get ran thru here, like dashcard param targets, do not have :type
-    type   (update :type maybe-normalize-token)
-    target (update :target #(normalize-tokens % :ignore-path))))
+    type                 (update :type maybe-normalize-token)
+    target               (update :target #(normalize-tokens % :ignore-path))
+    values_source_config (update-in [:values_source_config :label_field] #(normalize-tokens % :ignore-path))
+    values_source_config (update-in [:values_source_config :value_field] #(normalize-tokens % :ignore-path))))
 
 (defn- normalize-source-query [source-query]
   (let [{native? :native, :as source-query} (m/map-keys maybe-normalize-token source-query)]
@@ -413,6 +452,12 @@
     ;; remove empty stuff from the options map. The `remove-empty-clauses` step will further remove empty stuff
     ;; afterwards
     [:field id-or-name (not-empty opts)]))
+
+(defmethod canonicalize-mbql-clause :aggregation
+  [[_tag index opts]]
+  (if (empty? opts)
+    [:aggregation index]
+    [:aggregation index opts]))
 
 ;;; legacy Field clauses
 
@@ -575,6 +620,15 @@
           (normalize-tokens options :ignore-path))
     [:case (vec (for [[pred expr] clauses]
                   [(canonicalize-mbql-clause pred) (canonicalize-mbql-clause expr)]))]))
+
+(defmethod canonicalize-mbql-clause :substring
+  [[_ arg start & more]]
+  (into [:substring
+         (canonicalize-mbql-clause arg)
+         ;; 0 indexes were allowed in the past but we are now enforcing this rule in MBQL.
+         ;; This allows stored queries with literal 0 in the index to work.
+         (if (= 0 start) 1 (canonicalize-mbql-clause start))]
+        (map canonicalize-mbql-clause more)))
 
 ;;; top-level key canonicalization
 

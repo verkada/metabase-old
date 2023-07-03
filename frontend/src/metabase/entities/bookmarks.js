@@ -1,6 +1,6 @@
 import { assoc, updateIn, dissoc } from "icepick";
 import _ from "underscore";
-import { createSelector } from "reselect";
+import { createSelector } from "@reduxjs/toolkit";
 import { createEntity } from "metabase/lib/entities";
 import Collections from "metabase/entities/collections";
 import Dashboards from "metabase/entities/dashboards";
@@ -109,6 +109,10 @@ function getEntityFor(type) {
 function getIcon(bookmark) {
   const bookmarkEntity = getEntityFor(bookmark.type);
   return bookmarkEntity.objectSelectors.getIcon(bookmark);
+}
+
+export function isModelBookmark(bookmark) {
+  return bookmark.type === "card" && bookmark.dataset;
 }
 
 export const getOrderedBookmarks = createSelector(

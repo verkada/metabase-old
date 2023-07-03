@@ -1,20 +1,25 @@
 (ns metabase.transforms.core
-  (:require [medley.core :as m]
-            [metabase.domain-entities.core :as de :refer [Bindings DimensionBindings SourceEntity SourceName]]
-            [metabase.domain-entities.specs :refer [domain-entity-specs DomainEntitySpec]]
-            [metabase.driver :as driver]
-            [metabase.mbql.schema :as mbql.s]
-            [metabase.mbql.util :as mbql.u]
-            [metabase.models.field :refer [Field]]
-            [metabase.models.table :as table :refer [Table]]
-            [metabase.query-processor :as qp]
-            [metabase.transforms.materialize :as tf.materialize]
-            [metabase.transforms.specs :refer [Step transform-specs TransformSpec]]
-            [metabase.util :as u]
-            [metabase.util.i18n :refer [tru]]
-            [metabase.util.schema :as su]
-            [schema.core :as s]
-            [toucan.db :as db]))
+  (:require
+   [medley.core :as m]
+   [metabase.domain-entities.core
+    :as de
+    :refer [Bindings DimensionBindings SourceEntity SourceName]]
+   [metabase.domain-entities.specs
+    :refer [domain-entity-specs DomainEntitySpec]]
+   [metabase.driver :as driver]
+   [metabase.mbql.schema :as mbql.s]
+   [metabase.mbql.util :as mbql.u]
+   [metabase.models.field :refer [Field]]
+   [metabase.models.interface :as mi]
+   [metabase.models.table :as table :refer [Table]]
+   [metabase.query-processor :as qp]
+   [metabase.transforms.materialize :as tf.materialize]
+   [metabase.transforms.specs :refer [Step transform-specs TransformSpec]]
+   [metabase.util :as u]
+   [metabase.util.i18n :refer [tru]]
+   [metabase.util.schema :as su]
+   [schema.core :as s]
+   [toucan2.core :as t2]))
 
 (s/defn ^:private add-bindings :- Bindings
   [bindings :- Bindings, source :- SourceName, new-bindings :- (s/maybe DimensionBindings)]
@@ -32,7 +37,7 @@
     field-name
 
     [:field (id :guard integer?) _]
-    (db/select-one-field :name Field :id id)))
+    (t2/select-one-fn :name Field :id id)))
 
 (s/defn ^:private infer-resulting-dimensions :- DimensionBindings
   [bindings :- Bindings, {:keys [joins name]} :- Step, query :- mbql.s/Query]
@@ -83,7 +88,7 @@
 (s/defn ^:private ->source-table-reference
   "Serialize `entity` into a form suitable as `:source-table` value."
   [entity :- SourceEntity]
-  (if (instance? (type Table) entity)
+  (if (mi/instance-of? Table entity)
     (u/the-id entity)
     (str "card__" (u/the-id entity))))
 
@@ -126,7 +131,7 @@
     (assoc bindings name {:entity     (tf.materialize/make-card-for-step! step query)
                           :dimensions (infer-resulting-dimensions local-bindings step query)})))
 
-(def ^:private Tableset [(type Table)])
+(def ^:private Tableset [(mi/InstanceOf Table)])
 
 (s/defn ^:private find-tables-with-domain-entity :- Tableset
   [tableset :- Tableset, domain-entity-spec :- DomainEntitySpec]
@@ -169,7 +174,7 @@
   [db-id :- su/IntGreaterThanZero, schema :- (s/maybe s/Str)]
   (table/with-fields
     (de/with-domain-entity
-      (db/select 'Table :db_id db-id :schema schema))))
+      (t2/select 'Table :db_id db-id :schema schema))))
 
 (s/defn apply-transform!
   "Apply transform defined by transform spec `spec` to schema `schema` in database `db-id`.

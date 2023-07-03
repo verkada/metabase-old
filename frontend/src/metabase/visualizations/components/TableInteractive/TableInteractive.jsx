@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
+import { createRef, forwardRef, Component } from "react";
 import PropTypes from "prop-types";
 import ReactDOM from "react-dom";
 import { t } from "ttag";
@@ -11,14 +11,12 @@ import { Grid, ScrollSync } from "react-virtualized";
 
 import "./TableInteractive.css";
 
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import ExternalLink from "metabase/core/components/ExternalLink";
 import Button from "metabase/core/components/Button";
-import Tooltip from "metabase/components/Tooltip";
+import Tooltip from "metabase/core/components/Tooltip";
 
 import { formatValue } from "metabase/lib/formatting";
-import { isID, isPK, isFK } from "metabase/lib/schema_metadata";
-import { memoizeClass } from "metabase-lib/lib/utils";
 import {
   getTableCellClickedObject,
   getTableHeaderClickedObject,
@@ -26,19 +24,25 @@ import {
   isColumnRightAligned,
 } from "metabase/visualizations/lib/table";
 import { getColumnExtent } from "metabase/visualizations/lib/utils";
-import { fieldRefForColumn } from "metabase/lib/dataset";
-import { isAdHocModelQuestionCard } from "metabase/lib/data-modeling/utils";
-import Dimension from "metabase-lib/lib/Dimension";
 import { getScrollBarSize } from "metabase/lib/dom";
 import { zoomInRow } from "metabase/query_builder/actions";
 import { getQueryBuilderMode } from "metabase/query_builder/selectors";
 
 import ExplicitSize from "metabase/components/ExplicitSize";
-import MiniBar from "../MiniBar";
 
 import Ellipsified from "metabase/core/components/Ellipsified";
 import DimensionInfoPopover from "metabase/components/MetadataInfo/DimensionInfoPopover";
-import { ExpandButton } from "./TableInteractive.styled";
+import { isID, isPK, isFK } from "metabase-lib/types/utils/isa";
+import { fieldRefForColumn } from "metabase-lib/queries/utils/dataset";
+import Dimension from "metabase-lib/Dimension";
+import { memoizeClass } from "metabase-lib/utils";
+import { isAdHocModelQuestionCard } from "metabase-lib/metadata/utils/models";
+import MiniBar from "../MiniBar";
+import {
+  ExpandButton,
+  HeaderCell,
+  ResizeHandle,
+} from "./TableInteractive.styled";
 
 // approximately 120 chars
 const TRUNCATE_WIDTH = 780;
@@ -90,7 +94,7 @@ class TableInteractive extends Component {
     };
     this.columnHasResized = {};
     this.headerRefs = [];
-    this.detailShortcutRef = React.createRef();
+    this.detailShortcutRef = createRef();
 
     window.METABASE_TABLE = this;
   }
@@ -343,7 +347,19 @@ class TableInteractive extends Component {
   onColumnReorder(columnIndex, newColumnIndex) {
     const { settings, onUpdateVisualizationSettings } = this.props;
     const columns = settings["table.columns"].slice(); // copy since splice mutates
-    columns.splice(newColumnIndex, 0, columns.splice(columnIndex, 1)[0]);
+
+    const enabledColumns = columns
+      .map((c, index) => ({ ...c, index }))
+      .filter(c => c.enabled);
+
+    const adjustedColumnIndex = enabledColumns[columnIndex].index;
+    const adjustedNewColumnIndex = enabledColumns[newColumnIndex].index;
+
+    columns.splice(
+      adjustedNewColumnIndex,
+      0,
+      columns.splice(adjustedColumnIndex, 1)[0],
+    );
     onUpdateVisualizationSettings({
       "table.columns": columns,
     });
@@ -399,18 +415,15 @@ class TableInteractive extends Component {
 
   getHeaderClickedObject(columnIndex) {
     try {
-      return this._getHeaderClickedObjectCached(
+      return getTableHeaderClickedObject(
         this.props.data,
         columnIndex,
         this.props.isPivoted,
+        this.props.query,
       );
     } catch (e) {
       console.error(e);
     }
-  }
-  // NOTE: all arguments must be passed to the memoized method, not taken from this.props etc
-  _getHeaderClickedObjectCached(data, columnIndex, isPivoted) {
-    return getTableHeaderClickedObject(data, columnIndex, isPivoted);
   }
 
   visualizationIsClickable(clicked) {
@@ -654,13 +667,7 @@ class TableInteractive extends Component {
       return undefined;
     }
 
-    const dimension = Dimension.parseMBQL(
-      column.field_ref,
-      query.metadata(),
-      query,
-    );
-
-    return dimension;
+    return query.parseFieldReference(column.field_ref);
   }
 
   // TableInteractive renders invisible columns to remeasure the layout (see the _measure method)
@@ -751,7 +758,7 @@ class TableInteractive extends Component {
           });
         }}
       >
-        <div
+        <HeaderCell
           data-testid="header-cell"
           ref={e => (this.headerRefs[columnIndex] = e)}
           style={{
@@ -763,7 +770,7 @@ class TableInteractive extends Component {
               : this.getColumnLeft(style, columnIndex),
           }}
           className={cx(
-            "TableInteractive-cellWrapper TableInteractive-headerCellData text-medium text-brand-hover",
+            "TableInteractive-cellWrapper TableInteractive-headerCellData",
             {
               "TableInteractive-cellWrapper--firstColumn": columnIndex === 0,
               padLeft: columnIndex === 0 && !showDetailShortcut,
@@ -799,7 +806,7 @@ class TableInteractive extends Component {
                   <Icon
                     className="Icon mr1"
                     name={isAscending ? "chevronup" : "chevrondown"}
-                    size={8}
+                    size={10}
                   />
                 )}
                 {columnTitle}
@@ -807,7 +814,7 @@ class TableInteractive extends Component {
                   <Icon
                     className="Icon ml1"
                     name={isAscending ? "chevronup" : "chevrondown"}
-                    size={8}
+                    size={10}
                   />
                 )}
               </Ellipsified>,
@@ -834,8 +841,7 @@ class TableInteractive extends Component {
               this.setState({ dragColIndex: null });
             }}
           >
-            <div
-              className="bg-brand-hover bg-brand-active"
+            <ResizeHandle
               style={{
                 zIndex: 99,
                 position: "absolute",
@@ -847,7 +853,7 @@ class TableInteractive extends Component {
               }}
             />
           </Draggable>
-        </div>
+        </HeaderCell>
       </Draggable>
     );
   };
@@ -990,6 +996,7 @@ class TableInteractive extends Component {
               })}
               onMouseEnter={this.handleOnMouseEnter}
               onMouseLeave={this.handleOnMouseLeave}
+              data-testid="TableInteractive-root"
             >
               <canvas
                 className="spread"
@@ -1110,6 +1117,7 @@ class TableInteractive extends Component {
 
       setTimeout(() => {
         const end = Date.now();
+        // eslint-disable-next-line no-console
         console.log(end - start);
         start = end;
 
@@ -1132,7 +1140,6 @@ export default _.compose(
   connect(mapStateToProps, mapDispatchToProps),
   memoizeClass(
     "_getCellClickedObjectCached",
-    "_getHeaderClickedObjectCached",
     "_visualizationIsClickableCached",
     "getCellBackgroundColor",
     "getCellFormattedValue",
@@ -1140,9 +1147,8 @@ export default _.compose(
   ),
 )(TableInteractive);
 
-const DetailShortcut = React.forwardRef((_props, ref) => (
+const DetailShortcut = forwardRef((_props, ref) => (
   <div
-    id="detail-shortcut"
     className="TableInteractive-cellWrapper cursor-pointer"
     ref={ref}
     style={{
@@ -1153,6 +1159,7 @@ const DetailShortcut = React.forwardRef((_props, ref) => (
       width: SIDEBAR_WIDTH,
       zIndex: 3,
     }}
+    data-testid="detail-shortcut"
   >
     <Tooltip tooltip={t`View Details`}>
       <Button

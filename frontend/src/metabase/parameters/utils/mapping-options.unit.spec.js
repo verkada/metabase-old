@@ -1,30 +1,102 @@
+import { createMockMetadata } from "__support__/metadata";
 import {
-  metadata,
-  SAMPLE_DATABASE,
-  REVIEWS,
+  createSampleDatabase,
+  createAdHocCard,
+  createAdHocNativeCard,
+  SAMPLE_DB_ID,
+  ORDERS_ID,
   ORDERS,
+  REVIEWS_ID,
+  REVIEWS,
   PRODUCTS,
-} from "__support__/sample_database_fixture";
+  PRODUCTS_ID,
+} from "metabase-types/api/mocks/presets";
 
 import { getParameterMappingOptions } from "./mapping-options";
 
+const metadata = createMockMetadata({
+  databases: [createSampleDatabase()],
+});
+
+const ordersTable = metadata.table(ORDERS_ID);
+
 function structured(query) {
-  return SAMPLE_DATABASE.question(query).card();
+  return createAdHocCard({
+    dataset_query: {
+      type: "query",
+      database: SAMPLE_DB_ID,
+      query,
+    },
+  });
 }
 
 function native(native) {
-  return SAMPLE_DATABASE.nativeQuestion(native).card();
+  return createAdHocNativeCard({
+    dataset_query: {
+      type: "native",
+      database: SAMPLE_DB_ID,
+      native,
+    },
+  });
 }
 
 describe("parameters/utils/mapping-options", () => {
   describe("getParameterMappingOptions", () => {
+    describe("Model question", () => {
+      let dataset;
+      let virtualCardTable;
+      beforeEach(() => {
+        const question = ordersTable.question();
+        dataset = question
+          .setCard({ ...question.card(), id: 123 })
+          .setDataset(true);
+
+        // create a virtual table for the card
+        // that contains fields with custom, model-specific metadata
+        virtualCardTable = ordersTable.clone();
+        virtualCardTable.id = `card__123`;
+        virtualCardTable.fields = [
+          metadata.field(ORDERS.CREATED_AT).clone({
+            table_id: `card__123`,
+            uniqueId: `card__123:${ORDERS.CREATED_AT.id}`,
+            display_name: "~*~Created At~*~",
+          }),
+        ];
+
+        // add instances to the `metadata` instance
+        metadata.questions[dataset.id()] = dataset;
+        metadata.tables[virtualCardTable.id] = virtualCardTable;
+        virtualCardTable.fields.forEach(f => {
+          metadata.fields[f.uniqueId] = f;
+        });
+      });
+
+      it("should return fields from the model question's virtual card table, as though it is already nested", () => {
+        const options = getParameterMappingOptions(
+          metadata,
+          { type: "date/single" },
+          dataset.card(),
+        );
+
+        expect(options).toEqual([
+          {
+            icon: "calendar",
+            isForeign: false,
+            name: "~*~Created At~*~",
+            sectionName: "Order",
+            target: ["dimension", ["field", ORDERS.CREATED_AT, null]],
+          },
+        ]);
+      });
+    });
+
     describe("Structured Query", () => {
       it("should return field-id and fk-> dimensions", () => {
         const options = getParameterMappingOptions(
           metadata,
           { type: "date/single" },
           structured({
-            "source-table": REVIEWS.id,
+            "source-table": REVIEWS_ID,
           }),
         );
         expect(options).toEqual([
@@ -32,7 +104,7 @@ describe("parameters/utils/mapping-options", () => {
             sectionName: "Review",
             icon: "calendar",
             name: "Created At",
-            target: ["dimension", ["field", REVIEWS.CREATED_AT.id, null]],
+            target: ["dimension", ["field", REVIEWS.CREATED_AT, null]],
             isForeign: false,
           },
           {
@@ -43,8 +115,8 @@ describe("parameters/utils/mapping-options", () => {
               "dimension",
               [
                 "field",
-                PRODUCTS.CREATED_AT.id,
-                { "source-field": REVIEWS.PRODUCT_ID.id },
+                PRODUCTS.CREATED_AT,
+                { "source-field": REVIEWS.PRODUCT_ID },
               ],
             ],
             isForeign: true,
@@ -56,11 +128,11 @@ describe("parameters/utils/mapping-options", () => {
           metadata,
           { type: "date/single" },
           structured({
-            "source-table": REVIEWS.id,
+            "source-table": REVIEWS_ID,
             joins: [
               {
                 alias: "Joined Table",
-                "source-table": ORDERS.id,
+                "source-table": ORDERS_ID,
               },
             ],
           }),
@@ -70,7 +142,7 @@ describe("parameters/utils/mapping-options", () => {
             sectionName: "Review",
             name: "Created At",
             icon: "calendar",
-            target: ["dimension", ["field", 30, null]],
+            target: ["dimension", ["field", REVIEWS.CREATED_AT, null]],
             isForeign: false,
           },
           {
@@ -79,7 +151,7 @@ describe("parameters/utils/mapping-options", () => {
             icon: "calendar",
             target: [
               "dimension",
-              ["field", 1, { "join-alias": "Joined Table" }],
+              ["field", ORDERS.CREATED_AT, { "join-alias": "Joined Table" }],
             ],
             isForeign: true,
           },
@@ -87,7 +159,14 @@ describe("parameters/utils/mapping-options", () => {
             sectionName: "Product",
             name: "Created At",
             icon: "calendar",
-            target: ["dimension", ["field", 22, { "source-field": 32 }]],
+            target: [
+              "dimension",
+              [
+                "field",
+                PRODUCTS.CREATED_AT,
+                { "source-field": REVIEWS.PRODUCT_ID },
+              ],
+            ],
             isForeign: true,
           },
         ]);
@@ -98,13 +177,14 @@ describe("parameters/utils/mapping-options", () => {
           { type: "date/single" },
           structured({
             "source-query": {
-              "source-table": ORDERS.id,
+              "source-table": PRODUCTS_ID,
             },
           }),
         );
         expect(options).toEqual([
           {
-            sectionName: null,
+            // this is a source query, and tables for source queries do not have a display_name
+            sectionName: "",
             name: "Created At",
             icon: "calendar",
             target: [
@@ -152,7 +232,7 @@ describe("parameters/utils/mapping-options", () => {
             created: {
               type: "dimension",
               name: "created",
-              dimension: ["field", ORDERS.CREATED_AT.id, null],
+              dimension: ["field", ORDERS.CREATED_AT, null],
             },
           },
         }),

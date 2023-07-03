@@ -1,27 +1,33 @@
 (ns metabase.driver.mongo-test
   "Tests for Mongo driver."
-  (:require [cheshire.core :as json]
-            [clojure.test :refer :all]
-            [medley.core :as m]
-            [metabase.automagic-dashboards.core :as magic]
-            [metabase.db.metadata-queries :as metadata-queries]
-            [metabase.driver :as driver]
-            [metabase.driver.mongo :as mongo]
-            [metabase.driver.mongo.util :as mongo.util]
-            [metabase.driver.util :as driver.u]
-            [metabase.mbql.util :as mbql.u]
-            [metabase.models.database :refer [Database]]
-            [metabase.models.field :refer [Field]]
-            [metabase.models.table :as table :refer [Table]]
-            [metabase.query-processor :as qp]
-            [metabase.query-processor-test :as qp.test :refer [rows]]
-            [metabase.sync :as sync]
-            [metabase.test :as mt]
-            [metabase.test.data.interface :as tx]
-            [metabase.test.data.mongo :as tdm]
-            [monger.collection :as mc]
-            [taoensso.nippy :as nippy]
-            [toucan.db :as db])
+  (:require
+   [cheshire.core :as json]
+   [clojure.test :refer :all]
+   [medley.core :as m]
+   [metabase.automagic-dashboards.core :as magic]
+   [metabase.db.metadata-queries :as metadata-queries]
+   [metabase.driver :as driver]
+   [metabase.driver.mongo :as mongo]
+   [metabase.driver.mongo.query-processor :as mongo.qp]
+   [metabase.driver.mongo.util :as mongo.util]
+   [metabase.driver.util :as driver.u]
+   [metabase.mbql.util :as mbql.u]
+   [metabase.models.card :refer [Card]]
+   [metabase.models.database :refer [Database]]
+   [metabase.models.field :refer [Field]]
+   [metabase.models.table :as table :refer [Table]]
+   [metabase.query-processor :as qp]
+   [metabase.query-processor-test :as qp.test :refer [rows]]
+   [metabase.sync :as sync]
+   [metabase.test :as mt]
+   [metabase.test.data.interface :as tx]
+   [metabase.test.data.mongo :as tdm]
+   [metabase.util.log :as log]
+   [monger.collection :as mcoll]
+   [monger.core :as mg]
+   [taoensso.nippy :as nippy]
+   [toucan2.core :as t2]
+   [toucan2.tools.with-temp :as t2.with-temp])
   (:import org.bson.types.ObjectId))
 
 ;; ## Constants + Helper Fns/Macros
@@ -75,26 +81,18 @@
 (deftest database-supports?-test
  (mt/test-driver
     :mongo
-    (doseq [{:keys [details expected]} [{:details  {:host    "localhost"
-                                                    :port    3000
-                                                    :user   "metabase"
-                                                    :pass   "metasample123"
-                                                    :dbname  "bad-db-name"
-                                                    :version "5.0.0"}
-                                         :expected true}
-                                        {:details  {}
-                                         :expected false}
-                                        {:details  {:version nil}
-                                         :expected false}
-                                        {:details  {:host    "localhost"
-                                                    :port    27017
-                                                    :dbname  "metabase-test"
-                                                    :version "2.2134234.lol"}
-                                         :expected false}]
-           :let [ssl-details (tdm/conn-details details)]]
-      (testing (str "connect with " details)
+    (doseq [{:keys [dbms_version expected]}
+            [{:dbms_version {:semantic-version [5 0 0 0]}
+              :expected true}
+             {:dbms_version  {}
+              :expected false}
+             {:dbms_version  {:semantic-version []}
+              :expected false}
+             {:dbms_version  {:semantic-version [2 2134234]}
+              :expected false}]]
+      (testing (str "supports with " dbms_version)
         (is (= expected
-               (let [db (db/insert! Database {:name "dummy", :engine "mongo", :details ssl-details})]
+               (let [db (first (t2/insert-returning-instances! Database {:name "dummy", :engine "mongo", :dbms_version dbms_version}))]
                  (driver/database-supports? :mongo :expressions db))))))))
 
 
@@ -125,6 +123,55 @@
                                 :type     :native
                                 :database (mt/id)})
              (m/dissoc-in [:data :results_metadata] [:data :insights]))))))
+
+(deftest nested-native-query-test
+  (mt/test-driver :mongo
+    (testing "Mbql query with nested native source query _returns correct results_ (#30112)"
+      (t2.with-temp/with-temp [Card {:keys [id]} {:dataset_query {:type     :native
+                                                                  :native   {:collection    "venues"
+                                                                             :query         native-query}
+                                                                  :database (mt/id)}}]
+        (let [query (mt/mbql-query nil
+                      {:source-table (str "card__" id)
+                       :limit        1})]
+          (is (partial=
+               {:status :completed
+                :data   {:native_form {:collection "venues"
+                                       :query      (conj (mongo.qp/parse-query-string native-query)
+                                                         {"$limit" 1})}
+                         :rows        [[1]]}}
+               (qp/process-query query))))))
+    (testing "Mbql query with nested native source query _aggregates_ correctly (#30112)"
+      (let [query-str (str "[{\"$project\":\n"
+                           "   {\"_id\": \"$_id\",\n"
+                           "    \"name\": \"$name\",\n"
+                           "    \"category_id\": \"$category_id\",\n"
+                           "    \"latitude\": \"$latitude\",\n"
+                           "    \"longitude\": \"$longitude\",\n"
+                           "    \"price\": \"$price\"}\n"
+                           "}]")]
+        (t2.with-temp/with-temp [Card {:keys [id]} {:dataset_query {:type     :native
+                                                                    :native   {:collection    "venues"
+                                                                               :query         query-str}
+                                                                    :database (mt/id)}}]
+          (let [query (mt/mbql-query venues
+                        {:source-table (str "card__" id)
+                         :aggregation [:count]
+                         :breakout [*category_id/Integer]
+                         :order-by [[:desc [:aggregation 0]]]
+                         :limit 5})]
+            (is (partial=
+                 {:status :completed
+                  :data   {:native_form
+                           {:collection "venues"
+                            :query (conj (mongo.qp/parse-query-string query-str)
+                                         {"$group" {"_id" {"category_id" "$category_id"}, "count" {"$sum" 1}}}
+                                         {"$sort" {"_id" 1}}
+                                         {"$project" {"_id" false, "category_id" "$_id.category_id", "count" true}}
+                                         {"$sort" {"count" -1, "category_id" 1}}
+                                         {"$limit" 5})}
+                           :rows [[7 10] [50 10] [40 9] [2 8] [5 7]]}}
+                 (qp/process-query query)))))))))
 
 ;; ## Tests for individual syncing functions
 
@@ -165,7 +212,7 @@
                        :base-type         :type/Integer
                        :pk?               true
                        :database-position 0}}}
-           (driver/describe-table :mongo (mt/db) (Table (mt/id :venues)))))))
+           (driver/describe-table :mongo (mt/db) (t2/select-one Table :id (mt/id :venues)))))))
 
 (deftest nested-columns-test
   (mt/test-driver :mongo
@@ -196,7 +243,7 @@
     [["House Finch" nil]
      ["Mourning Dove" nil]]]])
 
-(deftest all-num-columns-test
+(deftest all-null-columns-test
   (mt/test-driver :mongo
     (mt/dataset all-null-columns
       ;; do a full sync on the DB to get the correct semantic type info
@@ -206,24 +253,50 @@
               {:name "name",           :database_type "java.lang.String", :base_type :type/Text,    :semantic_type :type/Name}]
              (map
               (partial into {})
-              (db/select [Field :name :database_type :base_type :semantic_type]
+              (t2/select [Field :name :database_type :base_type :semantic_type]
                 :table_id (mt/id :bird_species)
                 {:order-by [:name]})))))))
 
+(deftest new-rows-take-precedence-when-collecting-metadata-test
+  (mt/test-driver :mongo
+    (with-redefs [metadata-queries/nested-field-sample-limit 2]
+      (binding [tdm/*remove-nil?* true]
+        (mt/with-temp-test-data
+          ["bird_species"
+           [{:field-name "name", :base-type :type/Text}
+            {:field-name "favorite_snack", :base-type :type/Text}
+            {:field-name "max_wingspan", :base-type :type/Integer}]
+           [["Sharp-shinned Hawk" nil 68]
+            ["Tropicbird" nil 112]
+            ["House Finch" nil nil]
+            ["Mourning Dove" nil nil]
+            ["Common Blackbird" "earthworms" nil]
+            ["Silvereye" "cherries" nil]]]
+          ;; do a full sync on the DB to get the correct semantic type info
+          (sync/sync-database! (mt/db))
+          (is (= #{{:name "_id", :database_type "java.lang.Long", :base_type :type/Integer, :semantic_type :type/PK}
+                   {:name "favorite_snack", :database_type "java.lang.String", :base_type :type/Text, :semantic_type :type/Category}
+                   {:name "name", :database_type "java.lang.String", :base_type :type/Text, :semantic_type :type/Name}
+                   {:name "max_wingspan", :database_type "java.lang.Long", :base_type :type/Integer, :semantic_type nil}}
+                 (into #{}
+                       (map (partial into {}))
+                       (t2/select [Field :name :database_type :base_type :semantic_type]
+                         :table_id (mt/id :bird_species)
+                         {:order-by [:name]})))))))))
+
 (deftest table-rows-sample-test
   (mt/test-driver :mongo
-    (driver/sync-in-context :mongo (mt/db)
-      (fn []
-        (is (= [[1 "Red Medicine"]
-                [2 "Stout Burgers & Beers"]
-                [3 "The Apple Pan"]
-                [4 "Wurstküche"]
-                [5 "Brite Spot Family Restaurant"]]
-               (vec (take 5 (metadata-queries/table-rows-sample (Table (mt/id :venues))
-                              [(Field (mt/id :venues :id))
-                               (Field (mt/id :venues :name))]
-                              (constantly conj))))))))))
-
+    (testing "Should return the latest `nested-field-sample-limit` rows"
+      (let [table (t2/select-one Table :id (mt/id :venues))
+            fields (map #(t2/select-one Field :id (mt/id :venues %)) [:name :category_id])
+            rff (constantly conj)]
+        (with-redefs [metadata-queries/nested-field-sample-limit 5]
+          (is (= [["Mohawk Bend" 46]
+                  ["Golden Road Brewing" 10]
+                  ["Lucky Baldwin's Pub" 7]
+                  ["Barney's Beanery" 46]
+                  ["Busby's West" 48]]
+                 (driver/table-rows-sample :mongo table fields rff {}))))))))
 
 ;; ## Big-picture tests for the way data should look post-sync
 (deftest table-sync-test
@@ -232,7 +305,7 @@
             {:active true, :name "checkins"}
             {:active true, :name "users"}
             {:active true, :name "venues"}]
-           (for [field (db/select [Table :name :active]
+           (for [field (t2/select [Table :name :active]
                          :db_id (mt/id)
                          {:order-by [:name]})]
              (into {} field)))
@@ -258,48 +331,77 @@
                {:semantic_type :type/Name,      :base_type :type/Text,     :name "name"}
                {:semantic_type :type/Category,  :base_type :type/Integer,  :name "price"}]]
              (vec (for [table-name table-names]
-                    (vec (for [field (db/select [Field :name :base_type :semantic_type]
+                    (vec (for [field (t2/select [Field :name :base_type :semantic_type]
                                        :active   true
                                        :table_id (mt/id table-name)
                                        {:order-by [:name]})]
                            (into {} field))))))))))
 
-
 (tx/defdataset with-bson-ids
   [["birds"
      [{:field-name "name", :base-type :type/Text}
-      {:field-name "bird_id", :base-type :type/MongoBSONID}]
-     [["Rasta Toucan" (ObjectId. "012345678901234567890123")]
-      ["Lucky Pigeon" (ObjectId. "abcdefabcdefabcdefabcdef")]
+      {:field-name "bird_id", :base-type :type/MongoBSONID}
+      {:field-name "bird_uuid", :base-type :type/UUID}]
+     [["Rasta Toucan" (ObjectId. "012345678901234567890123") "11111111-1111-1111-1111-111111111111"]
+      ["Lucky Pigeon" (ObjectId. "abcdefabcdefabcdefabcdef") "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"]
       ["Unlucky Raven" nil]]]])
 
 (deftest bson-ids-test
   (mt/test-driver :mongo
-    (testing "BSON IDs"
-     (is (= [[2 "Lucky Pigeon" (ObjectId. "abcdefabcdefabcdefabcdef")]]
-            (rows (mt/dataset with-bson-ids
-                    (mt/run-mbql-query birds
-                      {:filter [:= $bird_id "abcdefabcdefabcdefabcdef"]}))))
-         "Check that we support Mongo BSON ID and can filter by it (#1367)")
+    (mt/dataset with-bson-ids
+      (testing "BSON IDs"
+        (testing "Check that we support Mongo BSON ID and can filter by it (#1367)"
+          (is (= [[2 "Lucky Pigeon" (ObjectId. "abcdefabcdefabcdefabcdef")]]
+                 (rows (mt/run-mbql-query birds
+                         {:filter [:= $bird_id "abcdefabcdefabcdefabcdef"]
+                          :fields [$id $name $bird_id]})))))
 
-     (is (= [[3 "Unlucky Raven" nil]]
-            (rows (mt/dataset with-bson-ids
-                    (mt/run-mbql-query birds
-                      {:filter [:is-null $bird_id]}))))
-         "handle null ObjectId queries properly (#11134)")
+        (testing "handle null ObjectId queries properly (#11134)"
+          (is (= [[3 "Unlucky Raven" nil]]
+                 (rows (mt/run-mbql-query birds
+                         {:filter [:is-null $bird_id]
+                          :fields [$id $name $bird_id]})))))
 
-     (is (= [[3 "Unlucky Raven" nil]]
-            (rows (mt/dataset with-bson-ids
-                    (mt/run-mbql-query birds
-                      {:filter [:is-empty $bird_id]}))))
-         "treat null ObjectId as empty (#15801)")
+        (testing "treat null ObjectId as empty (#15801)"
+          (is (= [[3 "Unlucky Raven" nil]]
+                 (rows (mt/run-mbql-query birds
+                        {:filter [:is-empty $bird_id]
+                         :fields [$id $name $bird_id]})))))
 
-     (is (= [[1 "Rasta Toucan" (ObjectId. "012345678901234567890123")]
-             [2 "Lucky Pigeon" (ObjectId. "abcdefabcdefabcdefabcdef")]]
-            (rows (mt/dataset with-bson-ids
-                    (mt/run-mbql-query birds
-                      {:filter [:not-empty $bird_id]}))))
-         "treat non-null ObjectId as not-empty (#15801)"))))
+        (testing "treat non-null ObjectId as not-empty (#15801)"
+          (is (= [[1 "Rasta Toucan" (ObjectId. "012345678901234567890123")]
+                  [2 "Lucky Pigeon" (ObjectId. "abcdefabcdefabcdefabcdef")]]
+                 (rows (mt/run-mbql-query birds
+                        {:filter [:not-empty $bird_id]
+                         :fields [$id $name $bird_id]}))))))
+
+      (testing "BSON UUIDs"
+        (testing "Check that we support Mongo BSON UUID and can filter by it"
+          (is (= [[2 "Lucky Pigeon" "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"]]
+                 (rows (mt/run-mbql-query birds
+                         {:filter [:= $bird_uuid "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"]
+                          :fields [$id $name $bird_uuid]})))))
+
+        (testing "handle null UUID queries properly"
+          (is (= [[3 "Unlucky Raven" nil]]
+                 (rows (mt/run-mbql-query birds
+                         {:filter [:is-null $bird_uuid]
+                          :fields [$id $name $bird_uuid]})))))
+
+
+        (testing "treat null UUID as empty"
+          (is (= [[3 "Unlucky Raven" nil]]
+                 (rows (mt/run-mbql-query birds
+                         {:filter [:is-empty $bird_uuid]
+                          :fields [$id $name $bird_uuid]}))))))
+
+      (testing "treat non-null UUID as not-empty"
+        (is (= [[1 "Rasta Toucan" "11111111-1111-1111-1111-111111111111"]
+                [2 "Lucky Pigeon" "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"]]
+               (rows (mt/run-mbql-query birds
+                         {:filter [:not-empty $bird_uuid]
+                          :fields [$id $name $bird_uuid]}))))))))
+
 
 (deftest bson-fn-call-forms-test
   (mt/test-driver :mongo
@@ -332,7 +434,7 @@
   (mt/test-driver :mongo
     (testing "make sure x-rays don't use features that the driver doesn't support"
       (is (empty?
-           (mbql.u/match-one (->> (magic/automagic-analysis (Field (mt/id :venues :price)) {})
+           (mbql.u/match-one (->> (magic/automagic-analysis (t2/select-one Field :id (mt/id :venues :price)) {})
                                   :ordered_cards
                                   (mapcat (comp :breakout :query :dataset_query :card)))
              [:field _ (_ :guard :binning)]))))))
@@ -342,7 +444,7 @@
     (testing (str "if we query a something an there are no values for the Field, the query should still return "
                   "successfully! (#8929 and #8894)")
       ;; add a temporary Field that doesn't actually exist to test data categories
-      (mt/with-temp Field [_ {:name "parent_id", :table_id (mt/id :categories)}]
+      (t2.with-temp/with-temp [Field _ {:name "parent_id", :table_id (mt/id :categories)}]
         ;; ok, now run a basic MBQL query against categories Table. When implicit Field IDs get added the `parent_id`
         ;; Field will be included
         (testing (str "if the column does not come back in the results for a given document we should fill in the "
@@ -379,7 +481,7 @@
                             :collection  "venues"}})))))))
 
 (defn- create-database-from-row-maps! [database-name collection-name row-maps]
-  (or (db/select-one Database :engine "mongo", :name database-name)
+  (or (t2/select-one Database :engine "mongo", :name database-name)
       (let [dbdef {:database-name database-name}]
         ;; destroy Mongo database if it already exists.
         (tx/destroy-db! :mongo dbdef)
@@ -389,15 +491,15 @@
             (doseq [[i row] (map-indexed vector row-maps)
                     :let    [row (assoc row :_id (inc i))]]
               (try
-                (mc/insert conn collection-name row)
+                (mcoll/insert conn collection-name row)
                 (catch Throwable e
                   (throw (ex-info (format "Error inserting row: %s" (ex-message e))
                                   {:database database-name, :collection collection-name, :details details, :row row}
                                   e)))))
-            (println (format "Inserted %d rows into %s collection %s."
-                             (count row-maps) (pr-str database-name) (pr-str collection-name))))
+            (log/infof "Inserted %d rows into %s collection %s."
+                       (count row-maps) (pr-str database-name) (pr-str collection-name)))
           ;; now sync the Database.
-          (let [db (db/insert! Database {:name database-name, :engine "mongo", :details details})]
+          (let [db (first (t2/insert-returning-instances! Database {:name database-name, :engine "mongo", :details details}))]
             (sync/sync-database! db)
             db)))))
 
@@ -423,3 +525,36 @@
                                  [:= $list_field "value_lf_a"]]
                    :aggregation [[:count]]
                    :breakout    [$coll.metas.group_field]}))))))))
+
+;; Make sure that simple `_` columns can be queried (#4647)
+(tx/defdataset underscore-column
+  [["bird_species"
+    [{:field-name "name", :base-type :type/Text}
+     {:field-name "_", :base-type :type/Text}]
+    [["House Finch" "sunflower seeds, ants, nettle, dandelion"]
+     ["Mourning Dove" "millet seeds, breadcrumbs, ice cream"]]]])
+
+(deftest underscore-filter-test
+  (testing "Simple `_` columns should be possible to query (#4647)"
+    (mt/test-driver :mongo
+      (mt/dataset underscore-column
+        (is (= [[1 "House Finch" "sunflower seeds, ants, nettle, dandelion"]]
+               (mt/rows
+                (mt/run-mbql-query bird_species
+                  {:filter [:contains $bird_species._ "nett"]}))))))))
+
+(deftest strange-versionArray-test
+  (mt/test-driver :mongo
+    (testing "Negative values in versionArray are ignored (#29678)"
+      (with-redefs [mg/command (constantly {"version" "4.0.28-23"
+                                            "versionArray" [4 0 29 -100]})]
+        (is (= {:version "4.0.28-23"
+                :semantic-version [4 0 29]}
+               (driver/dbms-version :mongo (mt/db))))))
+
+    (testing "Any values after rubbish in versionArray are ignored"
+      (with-redefs [mg/command (constantly {"version" "4.0.28-23"
+                                            "versionArray" [4 0 "NaN" 29]})]
+        (is (= {:version "4.0.28-23"
+                :semantic-version [4 0]}
+               (driver/dbms-version :mongo (mt/db))))))))

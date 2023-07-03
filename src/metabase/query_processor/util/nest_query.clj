@@ -5,15 +5,18 @@
 
    (This namespace is here rather than in the shared MBQL lib because it relies on other QP-land utils like the QP
   refs stuff.)"
-  (:require [clojure.walk :as walk]
-            [medley.core :as m]
-            [metabase.api.common :as api]
-            [metabase.mbql.util :as mbql.u]
-            [metabase.plugins.classloader :as classloader]
-            [metabase.query-processor.middleware.annotate :as annotate]
-            [metabase.query-processor.store :as qp.store]
-            [metabase.query-processor.util.add-alias-info :as add]
-            [metabase.util :as u]))
+  (:require
+   [clojure.walk :as walk]
+   [medley.core :as m]
+   [metabase.api.common :as api]
+   [metabase.mbql.util :as mbql.u]
+   [metabase.plugins.classloader :as classloader]
+   [metabase.query-processor.middleware.annotate :as annotate]
+   [metabase.query-processor.middleware.resolve-joins
+    :as qp.middleware.resolve-joins]
+   [metabase.query-processor.store :as qp.store]
+   [metabase.query-processor.util.add-alias-info :as add]
+   [metabase.util :as u]))
 
 (defn- joined-fields [inner-query]
   (m/distinct-by
@@ -26,14 +29,34 @@
      [:field _ (_ :guard :join-alias)]
      &match)))
 
-(defn- add-joined-fields-to-fields [joined-fields source]
-  (cond-> source
-    (seq joined-fields) (update :fields (fn [fields]
-                                          (m/distinct-by add/normalize-clause (concat fields joined-fields))))))
+(defn- keep-source+alias-props [field]
+  (update field 2 select-keys [::add/source-alias ::add/source-table :join-alias]))
+
+(defn- nfc-root [[_ field-id]]
+  (when-let [field (and (int? field-id) (qp.store/field field-id))]
+    (when-let [nfc-root (first (:nfc_path field))]
+      {:table_id (:table_id field)
+       :name nfc-root})))
+
+(defn- field-id-props [[_ field-id]]
+  (when-let [field (and (int? field-id) (qp.store/field field-id))]
+    (select-keys field [:table_id :name])))
+
+(defn- remove-unused-fields [inner-query source]
+  (let [used-fields (-> #{}
+                        (into (map keep-source+alias-props) (mbql.u/match inner-query :field))
+                        (into (map keep-source+alias-props) (mbql.u/match inner-query :expression)))
+        nfc-roots (into #{} (keep nfc-root) used-fields)]
+    (update source :fields (fn [fields]
+                             (filterv #(or (-> % keep-source+alias-props used-fields)
+                                           (-> % field-id-props nfc-roots))
+                                      fields)))))
 
 (defn- nest-source [inner-query]
   (classloader/require 'metabase.query-processor)
-  (let [source (as-> (select-keys inner-query [:source-table :source-query :source-metadata :joins :expressions]) source
+  (let [filter-clause (:filter inner-query)
+        keep-filter? (nil? (mbql.u/match-one filter-clause :expression))
+        source (as-> (select-keys inner-query [:source-table :source-query :source-metadata :joins :expressions]) source
                  ;; preprocess this without a current user context so it's not subject to permissions checks. To get
                  ;; here in the first place we already had to do perms checks to make sure the query we're transforming
                  ;; is itself ok, so we don't need to run another check
@@ -44,10 +67,14 @@
                  (add/add-alias-info source)
                  (:query source)
                  (dissoc source :limit)
-                 (add-joined-fields-to-fields (joined-fields inner-query) source))]
+                 (qp.middleware.resolve-joins/append-join-fields-to-fields source (joined-fields inner-query))
+                 (remove-unused-fields inner-query source)
+                 (cond-> source
+                   keep-filter? (assoc :filter filter-clause)))]
     (-> inner-query
         (dissoc :source-table :source-metadata :joins)
-        (assoc :source-query source))))
+        (assoc :source-query source)
+        (cond-> keep-filter? (dissoc :filter)))))
 
 (defn- raise-source-query-expression-ref
   "Convert an `:expression` reference from a source query into an appropriate `:field` clause for use in the surrounding
@@ -100,13 +127,14 @@
   "Pushes the `:source-table`/`:source-query`, `:expressions`, and `:joins` in the top-level of the query into a
   `:source-query` and updates `:expression` references and `:field` clauses with `:join-alias`es accordingly. See
   tests for examples. This is used by the SQL QP to make sure expressions happen in a subselect."
-  [{:keys [expressions], :as query}]
-  (if (empty? expressions)
-    query
-    (let [{:keys [source-query], :as query} (nest-source query)
-          query                             (rewrite-fields-and-expressions query)
-          source-query                      (assoc source-query :expressions expressions)]
-      (-> query
-          (dissoc :source-query :expressions)
-          (assoc :source-query source-query)
-          add/add-alias-info))))
+  [query]
+  (let [{:keys [expressions], :as query} (m/update-existing query :source-query nest-expressions)]
+    (if (empty? expressions)
+      query
+      (let [{:keys [source-query], :as query} (nest-source query)
+            query                             (rewrite-fields-and-expressions query)
+            source-query                      (assoc source-query :expressions expressions)]
+        (-> query
+            (dissoc :source-query :expressions)
+            (assoc :source-query source-query)
+            add/add-alias-info)))))

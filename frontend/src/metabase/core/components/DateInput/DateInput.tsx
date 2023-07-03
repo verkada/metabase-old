@@ -1,4 +1,4 @@
-import React, {
+import {
   ChangeEvent,
   FocusEvent,
   forwardRef,
@@ -9,7 +9,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import moment, { Moment } from "moment";
+import moment, { Moment } from "moment-timezone";
 import { t } from "ttag";
 import Input from "metabase/core/components/Input";
 
@@ -138,4 +138,5 @@ const DateInput = forwardRef(function DateInput(
   );
 });
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default DateInput;

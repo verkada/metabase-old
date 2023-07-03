@@ -1,17 +1,15 @@
-/* eslint-disable react/prop-types */
-import React, { Component } from "react";
+import { Component } from "react";
 import PropTypes from "prop-types";
 import { t } from "ttag";
 import cx from "classnames";
 
-import PulseCardPreview from "./PulseCardPreview";
-
 import QuestionSelect from "metabase/containers/QuestionSelect";
 
-// import Query from "metabase/lib/query";
+// import Query from "metabase-lib/queries/utils";
 import * as MetabaseAnalytics from "metabase/lib/analytics";
 
 import { color } from "metabase/lib/colors";
+import PulseCardPreview from "./PulseCardPreview";
 import { CardNotice } from "./PulseEditCards.styled";
 
 const SOFT_LIMIT = 10;

@@ -1,4 +1,6 @@
-import React, {
+import {
+  memo,
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -8,6 +10,7 @@ import React, {
 import PropTypes from "prop-types";
 import { t } from "ttag";
 import _ from "underscore";
+import { usePrevious } from "react-use";
 
 import Radio from "metabase/core/components/Radio";
 
@@ -15,17 +18,17 @@ import {
   field_visibility_types,
   field_semantic_types,
 } from "metabase/lib/core";
-import { isLocalField, isSameField } from "metabase/lib/query/field_ref";
-import { isFK, getSemanticTypeIcon } from "metabase/lib/schema_metadata";
-
-import RootForm from "metabase/containers/Form";
-import { usePrevious } from "metabase/hooks/use-previous";
+import { getSemanticTypeIcon } from "metabase/lib/schema_metadata";
+import RootForm from "metabase/containers/FormikForm";
 
 import SidebarContent from "metabase/query_builder/components/SidebarContent";
 import ColumnSettings, {
   hasColumnSettingsWidgets,
 } from "metabase/visualizations/components/ColumnSettings";
 import { getGlobalSettingsForColumn } from "metabase/visualizations/lib/settings/column";
+import { ModelIndexes } from "metabase/entities/model-indexes";
+import { isSameField } from "metabase-lib/queries/utils/field-ref";
+import { isFK } from "metabase-lib/types/utils/isa";
 
 import { EDITOR_TAB_INDEXES } from "../constants";
 import MappedFieldPicker from "./MappedFieldPicker";
@@ -45,6 +48,7 @@ const propTypes = {
   isLastField: PropTypes.bool.isRequired,
   handleFirstFieldFocus: PropTypes.func.isRequired,
   onFieldMetadataChange: PropTypes.func.isRequired,
+  modelIndexes: PropTypes.array.isRequired,
 };
 
 function getVisibilityTypeName(visibilityType) {
@@ -68,7 +72,7 @@ function getSemanticTypeOptions() {
   ];
 }
 
-function getFormFields({ dataset }) {
+function getFormFields({ dataset, field }) {
   const visibilityTypeOptions = field_visibility_types
     .filter(type => type.id !== "sensitive")
     .map(type => ({
@@ -76,9 +80,16 @@ function getFormFields({ dataset }) {
       value: type.id,
     }));
 
-  return fieldFormValues =>
+  const canIndex =
+    dataset.isSaved() && ModelIndexes.utils.canIndexField(field, dataset);
+
+  return formFieldValues =>
     [
-      { name: "display_name", title: t`Display name` },
+      {
+        name: "display_name",
+        title: t`Display name`,
+        subtitle: field.name,
+      },
       {
         name: "description",
         title: t`Description`,
@@ -96,11 +107,11 @@ function getFormFields({ dataset }) {
         title: t`Column type`,
         widget: SemanticTypePicker,
         options: getSemanticTypeOptions(),
-        icon: getSemanticTypeIcon(fieldFormValues.semantic_type, "ellipsis"),
+        icon: getSemanticTypeIcon(formFieldValues?.semantic_type, "ellipsis"),
       },
       {
         name: "fk_target_field_id",
-        hidden: !isFK(fieldFormValues),
+        hidden: !isFK(formFieldValues),
         widget: FKTargetPicker,
         databaseId: dataset.databaseId(),
       },
@@ -109,6 +120,11 @@ function getFormFields({ dataset }) {
         title: t`This column should appear in…`,
         type: "radio",
         options: visibilityTypeOptions,
+      },
+      canIndex && {
+        name: "should_index",
+        title: t`Surface individual records in search by matching against this column`,
+        type: "boolean",
       },
     ].filter(Boolean);
 }
@@ -138,6 +154,7 @@ function DatasetFieldMetadataSidebar({
   isLastField,
   handleFirstFieldFocus,
   onFieldMetadataChange,
+  modelIndexes,
 }) {
   const displayNameInputRef = useRef();
   const [shouldAnimateFieldChange, setShouldAnimateFieldChange] =
@@ -145,13 +162,13 @@ function DatasetFieldMetadataSidebar({
   const previousField = usePrevious(field);
 
   useEffect(() => {
-    const compareExact =
-      !isLocalField(field.field_ref) || !isLocalField(previousField?.field_ref);
-    if (!isSameField(field.field_ref, previousField?.field_ref, compareExact)) {
+    if (!isSameField(field.field_ref, previousField?.field_ref)) {
       setShouldAnimateFieldChange(true);
       // setTimeout is required as form fields are rerendered pretty frequently
       setTimeout(() => {
-        displayNameInputRef.current.select();
+        if (_.isFunction(displayNameInputRef.current?.select)) {
+          displayNameInputRef.current.select();
+        }
       });
     }
   }, [field, previousField]);
@@ -163,18 +180,19 @@ function DatasetFieldMetadataSidebar({
       semantic_type: field.semantic_type,
       fk_target_field_id: field.fk_target_field_id || null,
       visibility_type: field.visibility_type || "normal",
+      should_index: ModelIndexes.utils.fieldHasIndex(modelIndexes, field),
     };
     if (dataset.isNative()) {
       values.id = field.id;
     }
     return values;
-  }, [field, dataset]);
+  }, [field, dataset, modelIndexes]);
 
   const form = useMemo(
     () => ({
-      fields: getFormFields({ dataset }),
+      fields: getFormFields({ dataset, field }),
     }),
-    [dataset],
+    [field, dataset],
   );
 
   const [tab, setTab] = useState(TAB.SETTINGS);
@@ -286,6 +304,18 @@ function DatasetFieldMetadataSidebar({
     [onFieldMetadataChange],
   );
 
+  const onIndexChange = useCallback(
+    async value => {
+      // even though this isn't a real field metadata property, we want to hook into the
+      // question-saving process, so we'll use the same hook and remove this property before calling
+      // the API
+      onFieldMetadataChange({
+        should_index: value,
+      });
+    },
+    [onFieldMetadataChange],
+  );
+
   return (
     <SidebarContent>
       <AnimatableContent
@@ -343,7 +373,7 @@ function DatasetFieldMetadataSidebar({
               <Divider />
               <SecondaryFormContainer>
                 {tab === TAB.SETTINGS ? (
-                  <React.Fragment>
+                  <Fragment>
                     <FormField
                       name="visibility_type"
                       onChange={onVisibilityTypeChange}
@@ -354,13 +384,14 @@ function DatasetFieldMetadataSidebar({
                         allowlist={VIEW_AS_RELATED_FORMATTING_OPTIONS}
                       />
                     </ViewAsFieldContainer>
-                  </React.Fragment>
+                  </Fragment>
                 ) : (
                   <ColumnSettings
                     {...columnSettingsProps}
                     denylist={HIDDEN_COLUMN_FORMATTING_OPTIONS}
                   />
                 )}
+                <FormField name="should_index" onChange={onIndexChange} />
               </SecondaryFormContainer>
             </Form>
           )}
@@ -372,4 +403,4 @@ function DatasetFieldMetadataSidebar({
 
 DatasetFieldMetadataSidebar.propTypes = propTypes;
 
-export default DatasetFieldMetadataSidebar;
+export default memo(DatasetFieldMetadataSidebar);

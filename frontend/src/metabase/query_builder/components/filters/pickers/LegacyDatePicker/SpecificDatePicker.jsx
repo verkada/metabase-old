@@ -1,18 +1,18 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
+import { Component } from "react";
 import PropTypes from "prop-types";
 import { t } from "ttag";
 
+import moment from "moment-timezone";
+import cx from "classnames";
 import { getDateStyleFromSettings } from "metabase/lib/time";
 import Calendar from "metabase/components/Calendar";
 import InputBlurChange from "metabase/components/InputBlurChange";
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import ExpandingContent from "metabase/components/ExpandingContent";
 import HoursMinutesInput from "../DatePicker/HoursMinutesInput";
 
-import moment from "moment";
-import cx from "classnames";
-import { CalendarIcon, TimeLabel } from "./SpecificDatePicker.styled";
+import { TimeLabel } from "./SpecificDatePicker.styled";
 
 const DATE_FORMAT = "YYYY-MM-DD";
 const DATE_TIME_FORMAT = "YYYY-MM-DDTHH:mm:ss";
@@ -91,17 +91,14 @@ export default class SpecificDatePicker extends Component {
                 this.onChange(null);
               }
             }}
+            rightIcon={calendar ? "calendar" : undefined}
+            onRightIconClick={() =>
+              this.setState({ showCalendar: !this.state.showCalendar })
+            }
+            rightIconTooltip={
+              showCalendar ? t`Hide calendar` : t`Show calendar`
+            }
           />
-
-          {calendar && (
-            <CalendarIcon
-              name="calendar"
-              onClick={() =>
-                this.setState({ showCalendar: !this.state.showCalendar })
-              }
-              tooltip={showCalendar ? t`Hide calendar` : t`Show calendar`}
-            />
-          )}
         </div>
 
         {calendar && (

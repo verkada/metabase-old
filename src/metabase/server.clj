@@ -1,19 +1,23 @@
 (ns metabase.server
   "Code related to configuring, starting, and stopping the Metabase Jetty web server."
-  (:require [clojure.core :as core]
-            [clojure.string :as str]
-            [clojure.tools.logging :as log]
-            [medley.core :as m]
-            [metabase.config :as config]
-            [metabase.server.protocols :as server.protocols]
-            [metabase.util :as u]
-            [metabase.util.i18n :refer [trs]]
-            [ring.adapter.jetty :as ring-jetty]
-            [ring.util.servlet :as servlet])
-  (:import javax.servlet.AsyncContext
-           [javax.servlet.http HttpServletRequest HttpServletResponse]
-           [org.eclipse.jetty.server Request Server]
-           org.eclipse.jetty.server.handler.AbstractHandler))
+  (:require
+   [clojure.core :as core]
+   [clojure.string :as str]
+   [medley.core :as m]
+   [metabase.config :as config]
+   [metabase.server.protocols :as server.protocols]
+   [metabase.util :as u]
+   [metabase.util.i18n :refer [trs]]
+   [metabase.util.log :as log]
+   [ring.adapter.jetty9 :as ring-jetty]
+   [ring.adapter.jetty9.servlet :as servlet])
+  (:import
+   (jakarta.servlet AsyncContext)
+   (jakarta.servlet.http HttpServletRequest HttpServletResponse)
+   (org.eclipse.jetty.server Request Server)
+   (org.eclipse.jetty.server.handler AbstractHandler StatisticsHandler)))
+
+(set! *warn-on-reflection* true)
 
 (defn- jetty-ssl-config []
   (m/filter-vals
@@ -95,9 +99,12 @@
   ;;
   ;; TODO - I suppose the default value should be moved to the `metabase.config` namespace?
   (let [timeout (or (config/config-int :mb-jetty-async-response-timeout)
-                    (* 10 60 1000))]
+                    (* 10 60 1000))
+        handler (async-proxy-handler handler timeout)
+        stats-handler (doto (StatisticsHandler.)
+                        (.setHandler handler))]
     (doto ^Server (#'ring-jetty/create-server (assoc options :async? true))
-      (.setHandler (async-proxy-handler handler timeout)))))
+      (.setHandler stats-handler))))
 
 (defn start-web-server!
   "Start the embedded Jetty web server. Returns `:started` if a new server was started; `nil` if there was already a

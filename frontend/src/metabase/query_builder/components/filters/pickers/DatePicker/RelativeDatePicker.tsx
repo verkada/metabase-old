@@ -1,8 +1,10 @@
-/* eslint-disable react/prop-types */
-import React from "react";
+import { useState } from "react";
 import { t } from "ttag";
 import { assoc } from "icepick";
 
+import { DurationInputArg2 } from "moment-timezone";
+import { isValidTimeInterval } from "metabase/lib/time";
+import TippyPopover from "metabase/components/Popover/TippyPopover";
 import {
   formatStartingFrom,
   getRelativeDatetimeInterval,
@@ -11,11 +13,9 @@ import {
   setRelativeDatetimeValue,
   setStartingFrom,
   toTimeInterval,
-} from "metabase/lib/query_time";
-import { checkIfTimeSpanTooGreat, getRelativeTime } from "metabase/lib/time";
-import TippyPopover from "metabase/components/Popover/TippyPopover";
+} from "metabase-lib/queries/utils/query-time";
 
-import Filter from "metabase-lib/lib/queries/structured/Filter";
+import Filter from "metabase-lib/queries/structured/Filter";
 import {
   GridContainer,
   GridText,
@@ -26,16 +26,15 @@ import {
   NumericInput,
 } from "./RelativeDatePicker.styled";
 
-import { DurationInputArg2 } from "moment-timezone";
-
 type RelativeDatePickerProps = {
   className?: string;
   filter: Filter;
   onFilterChange: (filter: any[]) => void;
-  formatter: (value: number) => number;
-  offsetFormatter: (value: number) => number;
+  formatter?: (value: number) => number;
+  offsetFormatter?: (value: number) => number;
   primaryColor?: string;
   reverseIconDirection?: boolean;
+  supportsExpressions?: boolean;
 };
 
 type OptionsContentProps = RelativeDatePickerProps & {
@@ -66,7 +65,6 @@ const SELECT_STYLE = {
   width: 65,
   fontSize: 14,
   fontWeight: 700,
-  padding: 8,
 };
 
 const isSmallerUnit = (unit: string, unitToCompare: string) => {
@@ -100,13 +98,14 @@ function getCurrentIntervalName(filter: Filter) {
   return null;
 }
 
-const OptionsContent: React.FC<OptionsContentProps> = ({
+const OptionsContent = ({
   filter,
   primaryColor,
   onFilterChange,
   reverseIconDirection,
   setOptionsVisible,
-}) => {
+  supportsExpressions,
+}: OptionsContentProps) => {
   const options = filter[4] || {};
   const includeCurrent = !!options["include-current"];
   const currentString = getCurrentString(filter);
@@ -128,14 +127,16 @@ const OptionsContent: React.FC<OptionsContentProps> = ({
 
   return (
     <OptionsContainer>
-      <OptionButton
-        icon="arrow_left_to_line"
-        primaryColor={primaryColor}
-        reverseIconDirection={reverseIconDirection}
-        onClick={handleClickOnStartingFrom}
-      >
-        {t`Starting from...`}
-      </OptionButton>
+      {supportsExpressions && (
+        <OptionButton
+          icon="arrow_left_to_line"
+          primaryColor={primaryColor}
+          reverseIconDirection={reverseIconDirection}
+          onClick={handleClickOnStartingFrom}
+        >
+          {t`Starting from...`}
+        </OptionButton>
+      )}
       <OptionButton
         selected={includeCurrent}
         primaryColor={primaryColor}
@@ -149,7 +150,7 @@ const OptionsContent: React.FC<OptionsContentProps> = ({
   );
 };
 
-const RelativeDatePicker: React.FC<RelativeDatePickerProps> = props => {
+const RelativeDatePicker = (props: RelativeDatePickerProps) => {
   const {
     filter,
     onFilterChange,
@@ -157,7 +158,6 @@ const RelativeDatePicker: React.FC<RelativeDatePickerProps> = props => {
     offsetFormatter = value => value,
     className,
     primaryColor,
-    reverseIconDirection,
   } = props;
 
   const startingFrom = getStartingFrom(filter);
@@ -166,22 +166,22 @@ const RelativeDatePicker: React.FC<RelativeDatePickerProps> = props => {
   const showOptions = !startingFrom;
   const numColumns = showOptions ? 3 : 4;
 
-  const [optionsVisible, setOptionsVisible] = React.useState(false);
+  const [optionsVisible, setOptionsVisible] = useState(false);
 
   const optionsContent = (
     <OptionsContent {...props} setOptionsVisible={setOptionsVisible} />
   );
 
   const handleChangeDateNumericInput = (newIntervals: number) => {
-    const timeSpanTooGreat = checkIfTimeSpanTooGreat(newIntervals, unit);
-    const valueToUse = timeSpanTooGreat ? intervals : newIntervals;
+    const isValid = isValidTimeInterval(newIntervals, unit);
+    const valueToUse = isValid ? newIntervals : Math.abs(intervals);
 
     onFilterChange(setRelativeDatetimeValue(filter, formatter(valueToUse)));
   };
 
   const handleChangeUnitInput = (newUnit: DurationInputArg2) => {
-    const timeSpanTooGreat = checkIfTimeSpanTooGreat(intervals, newUnit);
-    const unitToUse = timeSpanTooGreat ? unit : newUnit;
+    const isValid = isValidTimeInterval(intervals, newUnit);
+    const unitToUse = isValid ? newUnit : unit;
 
     onFilterChange(setRelativeDatetimeUnit(filter, unitToUse));
   };
@@ -196,7 +196,7 @@ const RelativeDatePicker: React.FC<RelativeDatePickerProps> = props => {
         <GridText>{intervals < 0 ? t`Past` : t`Next`}</GridText>
       ) : null}
       <NumericInput
-        className="input text-right"
+        className="text-right"
         primaryColor={primaryColor}
         style={SELECT_STYLE}
         data-ui-tag="relative-date-input"
@@ -236,7 +236,7 @@ const RelativeDatePicker: React.FC<RelativeDatePickerProps> = props => {
         <>
           <GridText>{t`Starting from`}</GridText>
           <NumericInput
-            className="input text-right"
+            className="text-right"
             primaryColor={primaryColor}
             style={SELECT_STYLE}
             data-ui-tag="relative-date-input"

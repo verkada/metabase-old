@@ -1,32 +1,31 @@
 import styled from "@emotion/styled";
-import {
-  space,
-  breakpointMinHeightMedium,
-} from "metabase/styled-components/theme";
+import { space, breakpointMaxSmall } from "metabase/styled-components/theme";
 
 import { color, lighten } from "metabase/lib/colors";
 
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 
 export const InlineOperatorContainer = styled.div`
   font-weight: bold;
   font-size: 0.875rem;
-  ${breakpointMinHeightMedium} {
-    font-size: 1rem;
+  ${breakpointMaxSmall} {
+    margin-bottom: 0.875rem;
   }
-  margin-bottom: 0.875rem;
+  display: flex;
+  width: 100%;
+  align-items: center;
+`;
+
+export const FieldNameContainer = styled.div`
   display: inline-flex;
-  align-items: flex-start;
+  align-items: flex-end;
 `;
 
 export const FieldIcon = styled(Icon)`
   margin-right: ${space(1)};
+  color: ${color("text-medium")};
   width: 1rem;
   height: 1rem;
-  ${breakpointMinHeightMedium} {
-    width: 1.25rem;
-    height: 1.25rem;
-  }
 `;
 
 export const FieldTitle = styled.span`
@@ -47,12 +46,14 @@ export const OperatorDisplay = styled.button`
   font-weight: bold;
   text-decoration: ${props => (props.onClick ? "underline" : "none")};
   text-underline-offset: 2px;
-  color: ${color("text-light")};
+  color: ${props => (props.onClick ? color("brand") : color("text-medium"))};
   text-transform: lowercase;
 
-  ${props => (props.onClick ? "cursor: pointer;" : "")} &:hover {
+  ${props => (props.onClick ? "cursor: pointer;" : "")}
+
+  &:hover {
     color: ${props =>
-      props.onClick ? lighten("brand", 0.1) : color("text-light")};
+      props.onClick ? lighten("brand", 0.1) : color("text-medium")};
   }
 `;
 

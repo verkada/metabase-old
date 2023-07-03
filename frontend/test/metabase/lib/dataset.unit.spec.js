@@ -1,11 +1,23 @@
+import { createMockMetadata } from "__support__/metadata";
+import {
+  createSampleDatabase,
+  ORDERS,
+  ORDERS_ID,
+  PRODUCTS,
+  PRODUCTS_ID,
+} from "metabase-types/api/mocks/presets";
 import {
   fieldRefForColumn,
   syncTableColumnsToQuery,
   findColumnForColumnSetting,
-  keyForColumn,
-} from "metabase/lib/dataset";
+} from "metabase-lib/queries/utils/dataset";
 
-import { ORDERS, PRODUCTS } from "__support__/sample_database_fixture";
+const metadata = createMockMetadata({
+  databases: [createSampleDatabase()],
+});
+
+const ordersTable = metadata.table(ORDERS_ID);
+const productsTable = metadata.table(PRODUCTS_ID);
 
 describe("metabase/util/dataset", () => {
   describe("fieldRefForColumn", () => {
@@ -18,21 +30,93 @@ describe("metabase/util/dataset", () => {
     });
   });
 
+  describe("syncColumnsAndSettings", () => {
+    it("should automatically add new metrics when a new aggregrate column is added", () => {
+      const prevQuestion = productsTable
+        .query({
+          aggregation: [["count"]],
+          breakout: [["field", PRODUCTS.CATEGORY, null]],
+        })
+        .question()
+        .setSettings({
+          "graph.metrics": ["count"],
+        });
+
+      const newQuestion = prevQuestion
+        .query()
+        .aggregate(["sum", ["field", PRODUCTS.PRICE, null]])
+        .question()
+        .syncColumnsAndSettings(prevQuestion);
+
+      expect(newQuestion.setting("graph.metrics")).toMatchObject([
+        "count",
+        "sum",
+      ]);
+    });
+
+    it("should automatically remove metrics from settings when an aggregrate column is removed", () => {
+      const prevQuestion = productsTable
+        .query({
+          aggregation: [["sum", ["field", PRODUCTS.PRICE, null]], ["count"]],
+          breakout: [["field", PRODUCTS.CATEGORY, null]],
+        })
+        .question()
+        .setSettings({
+          "graph.metrics": ["count", "sum"],
+        });
+
+      const newQuestion = prevQuestion
+        .query()
+        .removeAggregation(1)
+        .question()
+        .syncColumnsAndSettings(prevQuestion);
+
+      expect(newQuestion.setting("graph.metrics")).toMatchObject(["sum"]);
+    });
+
+    it("Adding a breakout should not affect graph.metrics", () => {
+      const prevQuestion = productsTable
+        .query({
+          aggregation: [["sum", ["field", PRODUCTS.PRICE, null]], ["count"]],
+          breakout: [["field", PRODUCTS.CATEGORY, null]],
+        })
+        .question()
+        .setSettings({
+          "graph.metrics": ["count", "sum"],
+        });
+
+      const newQuestion = prevQuestion
+        .query()
+        .breakout(["field", PRODUCTS.VENDOR, null])
+        .question()
+        .syncColumnsAndSettings(prevQuestion);
+
+      expect(newQuestion.setting("graph.metrics")).toMatchObject([
+        "count",
+        "sum",
+      ]);
+      expect(newQuestion.query().columns()).toHaveLength(4);
+    });
+  });
+
   describe("syncTableColumnsToQuery", () => {
     it("should not modify `fields` if no `table.columns` setting preset", () => {
       const question = syncTableColumnsToQuery(
-        ORDERS.query({
-          fields: [["field", ORDERS.TOTAL.id, null]],
-        }).question(),
+        ordersTable
+          .query({
+            fields: [["field", ["field", ORDERS.TOTAL, null], null]],
+          })
+          .question(),
       );
       expect(question.query().query()).toEqual({
-        "source-table": ORDERS.id,
-        fields: [["field", ORDERS.TOTAL.id, null]],
+        "source-table": ORDERS_ID,
+        fields: [["field", ["field", ORDERS.TOTAL, null], null]],
       });
     });
     it("should sync included `table.columns` by name", () => {
       const question = syncTableColumnsToQuery(
-        ORDERS.query()
+        ordersTable
+          .query()
           .question()
           .setSettings({
             "table.columns": [
@@ -44,30 +128,31 @@ describe("metabase/util/dataset", () => {
           }),
       );
       expect(question.query().query()).toEqual({
-        "source-table": ORDERS.id,
-        fields: [["field", ORDERS.TOTAL.id, null]],
+        "source-table": ORDERS_ID,
+        fields: [["field", ORDERS.TOTAL, null]],
       });
     });
     it("should sync included `table.columns` by fieldRef", () => {
       const question = syncTableColumnsToQuery(
-        ORDERS.query()
+        ordersTable
+          .query()
           .question()
           .setSettings({
             "table.columns": [
               {
-                fieldRef: ["field", ORDERS.TOTAL.id, null],
+                fieldRef: ["field", ORDERS.TOTAL, null],
                 enabled: true,
               },
             ],
           }),
       );
       expect(question.query().query()).toEqual({
-        "source-table": ORDERS.id,
-        fields: [["field", ORDERS.TOTAL.id, null]],
+        "source-table": ORDERS_ID,
+        fields: [["field", ORDERS.TOTAL, null]],
       });
     });
     it("should not modify columns if all default columns are enabled", () => {
-      const query = ORDERS.query();
+      const query = ordersTable.query();
       const question = syncTableColumnsToQuery(
         query.question().setSettings({
           "table.columns": query.columnNames().map(name => ({
@@ -77,18 +162,19 @@ describe("metabase/util/dataset", () => {
         }),
       );
       expect(question.query().query()).toEqual({
-        "source-table": ORDERS.id,
+        "source-table": ORDERS_ID,
       });
     });
 
     describe("with joins", () => {
       it("should sync included `table.columns` by name to join clauses", () => {
         const question = syncTableColumnsToQuery(
-          ORDERS.query()
+          ordersTable
+            .query()
             .join({
               alias: "products",
               fields: "all",
-              "source-table": PRODUCTS.id,
+              "source-table": PRODUCTS_ID,
             })
             .question()
             .setSettings({
@@ -105,38 +191,37 @@ describe("metabase/util/dataset", () => {
             }),
         );
         expect(question.query().query()).toEqual({
-          "source-table": ORDERS.id,
+          "source-table": ORDERS_ID,
           joins: [
             {
               alias: "products",
-              "source-table": PRODUCTS.id,
-              fields: [
-                ["field", PRODUCTS.PRICE.id, { "join-alias": "products" }],
-              ],
+              "source-table": PRODUCTS_ID,
+              fields: [["field", PRODUCTS.PRICE, { "join-alias": "products" }]],
             },
           ],
-          fields: [["field", ORDERS.TOTAL.id, null]],
+          fields: [["field", ORDERS.TOTAL, null]],
         });
       });
       it("should sync included `table.columns` by fieldRef to join clauses", () => {
         const question = syncTableColumnsToQuery(
-          ORDERS.query()
+          ordersTable
+            .query()
             .join({
               alias: "products",
               fields: "all",
-              "source-table": PRODUCTS.id,
+              "source-table": PRODUCTS_ID,
             })
             .question()
             .setSettings({
               "table.columns": [
                 {
-                  fieldRef: ["field", ORDERS.TOTAL.id, null],
+                  fieldRef: ["field", ORDERS.TOTAL, null],
                   enabled: true,
                 },
                 {
                   fieldRef: [
                     "field",
-                    PRODUCTS.PRICE.id,
+                    PRODUCTS.PRICE,
                     { "join-alias": "products" },
                   ],
                   enabled: true,
@@ -145,17 +230,15 @@ describe("metabase/util/dataset", () => {
             }),
         );
         expect(question.query().query()).toEqual({
-          "source-table": ORDERS.id,
+          "source-table": ORDERS_ID,
           joins: [
             {
               alias: "products",
-              "source-table": PRODUCTS.id,
-              fields: [
-                ["field", PRODUCTS.PRICE.id, { "join-alias": "products" }],
-              ],
+              "source-table": PRODUCTS_ID,
+              fields: [["field", PRODUCTS.PRICE, { "join-alias": "products" }]],
             },
           ],
-          fields: [["field", ORDERS.TOTAL.id, null]],
+          fields: [["field", ORDERS.TOTAL, null]],
         });
       });
     });
@@ -176,98 +259,6 @@ describe("metabase/util/dataset", () => {
         fieldRef: ["field", 1, { "source-field": 2 }],
       });
       expect(column).toBe(columns[1]);
-    });
-  });
-
-  describe("keyForColumn", () => {
-    // NOTE: run legacy tests with and without a field_ref. without is disabled in latest since it now always uses
-    // field_ref, leaving test code in place to compare against older versions
-    for (const fieldRefEnabled of [/*false,*/ true]) {
-      describe(fieldRefEnabled ? "with field_ref" : "without field_ref", () => {
-        it("should return [ref [field ...]] for field", () => {
-          expect(
-            keyForColumn({
-              name: "foo",
-              id: 1,
-              field_ref: fieldRefEnabled ? ["field", 1, null] : undefined,
-            }),
-          ).toEqual(JSON.stringify(["ref", ["field", 1, null]]));
-        });
-        it("should return [ref [field ...]] for foreign field", () => {
-          expect(
-            keyForColumn({
-              name: "foo",
-              id: 1,
-              fk_field_id: 2,
-              field_ref: fieldRefEnabled
-                ? ["field", 1, { "source-field": 2 }]
-                : undefined,
-            }),
-          ).toEqual(
-            JSON.stringify(["ref", ["field", 1, { "source-field": 2 }]]),
-          );
-        });
-        it("should return [ref [expression ...]] for expression", () => {
-          expect(
-            keyForColumn({
-              name: "foo",
-              expression_name: "foo",
-              field_ref: fieldRefEnabled ? ["expression", "foo"] : undefined,
-            }),
-          ).toEqual(JSON.stringify(["ref", ["expression", "foo", null]]));
-        });
-        it("should return [name ...] for aggregation", () => {
-          const col = {
-            name: "foo",
-            source: "aggregation",
-            field_ref: fieldRefEnabled ? ["aggregation", 0] : undefined,
-          };
-          expect(keyForColumn(col, [col])).toEqual(
-            // NOTE: not ideal, matches existing behavior, but should be ["aggregation", 0]
-            JSON.stringify(["name", "foo"]),
-          );
-        });
-        it("should return [name ...] for aggregation", () => {
-          const col = {
-            name: "foo",
-            id: ["field", "foo", { "base-type": "type/Integer" }],
-            field_ref: fieldRefEnabled
-              ? ["field", "foo", { "base-type": "type/Integer" }]
-              : undefined,
-          };
-          expect(keyForColumn(col, [col])).toEqual(
-            // NOTE: not ideal, matches existing behavior, but should be ["field", "foo", {"base-type": "type/Integer"}]
-            JSON.stringify(["name", "foo"]),
-          );
-        });
-        it("should return [field ...] for native query column", () => {
-          expect(
-            keyForColumn({
-              name: "foo",
-              field_ref: fieldRefEnabled
-                ? ["field", "foo", { "base-type": "type/Integer" }]
-                : undefined,
-            }),
-          ).toEqual(
-            // NOTE: not ideal, matches existing behavior, but should be ["field", "foo", {"base-type": "type/Integer"}]
-            JSON.stringify(["name", "foo"]),
-          );
-        });
-      });
-    }
-
-    describe("with field_ref", () => {
-      it("should return [ref [field ...]] for joined field", () => {
-        const col = {
-          name: "foo",
-          id: 1,
-          field_ref: ["field", 1, { "join-alias": "x" }],
-        };
-        expect(keyForColumn(col)).toEqual(
-          // NOTE: not ideal, matches existing behavior, but should be ["field", 1, {"join-alias": "x"}]
-          JSON.stringify(["ref", ["field", 1, null]]),
-        );
-      });
     });
   });
 });

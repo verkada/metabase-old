@@ -1,22 +1,29 @@
 (ns metabase.query-processor.streaming-test
-  (:require [cheshire.core :as json]
-            [clojure.data.csv :as csv]
-            [clojure.string :as str]
-            [clojure.test :refer :all]
-            [medley.core :as m]
-            [metabase.api.embed-test :as embed-test]
-            [metabase.models.card :as card :refer [Card]]
-            [metabase.query-processor :as qp]
-            [metabase.query-processor.context :as qp.context]
-            [metabase.query-processor.streaming :as qp.streaming]
-            [metabase.query-processor.streaming.test-util :as streaming.test-util]
-            [metabase.query-processor.streaming.xlsx-test :as xlsx-test]
-            [metabase.server.protocols :as server.protocols]
-            [metabase.shared.models.visualization-settings :as mb.viz]
-            [metabase.test :as mt]
-            [metabase.util :as u]
-            [toucan.db :as db])
-  (:import java.util.UUID))
+  (:require
+   [cheshire.core :as json]
+   [clojure.data.csv :as csv]
+   [clojure.string :as str]
+   [clojure.test :refer :all]
+   [medley.core :as m]
+   [metabase.api.embed-test :as embed-test]
+   [metabase.models :refer [Card Dashboard DashboardCard]]
+   [metabase.query-processor :as qp]
+   [metabase.query-processor.context :as qp.context]
+   [metabase.query-processor.streaming :as qp.streaming]
+   [metabase.query-processor.streaming.test-util :as streaming.test-util]
+   [metabase.query-processor.streaming.xlsx-test :as xlsx-test]
+   [metabase.server.protocols :as server.protocols]
+   [metabase.shared.models.visualization-settings :as mb.viz]
+   [metabase.test :as mt]
+   [metabase.util :as u]
+   [toucan.db :as db]
+   [toucan2.tools.with-temp :as t2.with-temp])
+  (:import
+   (jakarta.servlet AsyncContext ServletOutputStream)
+   (jakarta.servlet.http HttpServletResponse)
+   (java.util UUID)))
+
+(set! *warn-on-reflection* true)
 
 (defn- maybe-remove-checksum
   "remove metadata checksum if present because it can change between runs if encryption is in play"
@@ -80,18 +87,18 @@
                                      (qp.context/reducef (qp.context/rff context) context metadata rows))))
             complete-promise   (promise)]
         (server.protocols/respond streaming-response
-                                  {:response      (reify javax.servlet.http.HttpServletResponse
+                                  {:response      (reify HttpServletResponse
                                                     (setStatus [_ _])
                                                     (setHeader [_ _ _])
                                                     (setContentType [_ _])
                                                     (getOutputStream [_]
-                                                      (proxy [javax.servlet.ServletOutputStream] []
+                                                      (proxy [ServletOutputStream] []
                                                         (write
                                                           ([byytes]
                                                            (.write os ^bytes byytes))
                                                           ([byytes offset length]
                                                            (.write os ^bytes byytes offset length))))))
-                                   :async-context (reify javax.servlet.AsyncContext
+                                   :async-context (reify AsyncContext
                                                     (complete [_]
                                                       (deliver complete-promise true)))})
         (is (= true
@@ -131,7 +138,7 @@
 ;; see also `metabase.query-processor.streaming.xlsx-test/report-timezone-test`
 ;; TODO this test doesn't seem to run?
 (deftest report-timezone-test
-  (testing "Export downloads should format stuff with the report timezone rather than UTC (#13677)\n"
+  (testing "Export downloads should format stuff with the report timezone rather than UTC (#13677)"
     (mt/test-driver :postgres
       (let [query     (mt/dataset attempted-murders
                         (mt/mbql-query attempts
@@ -236,11 +243,13 @@
       (mt/with-temporary-setting-values [enable-public-sharing true
                                          enable-embedding      true]
         (embed-test/with-new-secret-key
-          (mt/with-temp Card [card (if viz-settings
-                                     (assoc card-defaults :visualization_settings viz-settings)
-                                     card-defaults)]
+          (t2.with-temp/with-temp [Card          card      (if viz-settings
+                                                             (assoc card-defaults :visualization_settings viz-settings)
+                                                             card-defaults)
+                                   Dashboard     dashboard {:name "Test Dashboard"}
+                                   DashboardCard dashcard  {:card_id (u/the-id card) :dashboard_id (u/the-id dashboard)}]
             (doseq [export-format (keys assertions)
-                    endpoint      (or endpoints [:dataset :card :public :embed])]
+                    endpoint      (or endpoints [:dataset :card :dashboard :public :embed])]
               (testing endpoint
                 (case endpoint
                   :dataset
@@ -253,7 +262,17 @@
 
                   :card
                   (let [results (mt/user-http-request user :post 200
-                                                      (format "card/%d/query/%s" (:id card) (name export-format))
+                                                      (format "card/%d/query/%s" (u/the-id card) (name export-format))
+                                                      {:request-options {:as (if (= export-format :xlsx) :byte-array :string)}})]
+                    ((-> assertions export-format) results))
+
+                  :dashboard
+                  (let [results (mt/user-http-request user :post 200
+                                                      (format "dashboard/%d/dashcard/%d/card/%d/query/%s"
+                                                              (u/the-id dashboard)
+                                                              (u/the-id dashcard)
+                                                              (u/the-id card)
+                                                              (name export-format))
                                                       {:request-options {:as (if (= export-format :xlsx) :byte-array :string)}})]
                     ((-> assertions export-format) results))
 

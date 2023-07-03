@@ -1,13 +1,13 @@
-import React, { ReactElement } from "react";
+import { ReactElement } from "react";
 import { hideAll } from "tippy.js";
 
+import PropTypes from "prop-types";
 import TippyPopover, {
   ITippyPopoverProps,
 } from "metabase/components/Popover/TippyPopover";
-import { isVirtualCardId } from "metabase/lib/saved-questions/saved-questions";
+import { isVirtualCardId } from "metabase-lib/metadata/utils/saved-questions";
 
 import { WidthBoundTableInfo } from "./TableInfoPopover.styled";
-import PropTypes from "prop-types";
 
 export const POPOVER_DELAY: [number, number] = [500, 300];
 
@@ -82,4 +82,5 @@ function TableInfoPopover({
 
 TableInfoPopover.propTypes = propTypes;
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default TableInfoPopover;

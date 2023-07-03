@@ -1,14 +1,17 @@
 (ns metabase.test.data.sql
   "Common test extension functionality for all SQL drivers."
-  (:require [clojure.string :as str]
-            [clojure.tools.logging :as log]
-            [metabase.driver :as driver]
-            [metabase.driver.ddl.interface :as ddl.i]
-            [metabase.driver.sql.util :as sql.u]
-            [metabase.query-processor :as qp]
-            [metabase.test.data :as data]
-            [metabase.test.data.interface :as tx])
-  (:import metabase.test.data.interface.FieldDefinition))
+  (:require
+   [clojure.string :as str]
+   [metabase.driver :as driver]
+   [metabase.driver.ddl.interface :as ddl.i]
+   [metabase.driver.sql]
+   [metabase.driver.sql.util :as sql.u]
+   [metabase.query-processor :as qp]
+   [metabase.test.data :as data]
+   [metabase.test.data.interface :as tx]
+   [metabase.util.log :as log]))
+
+(comment metabase.driver.sql/keep-me)
 
 (driver/register! :sql/test-extensions, :abstract? true)
 
@@ -46,9 +49,9 @@
   :hierarchy #'driver/hierarchy)
 
 (defmethod qualified-name-components :sql/test-extensions
-  ([_ db-name]                       [db-name])
-  ([_ db-name table-name]            [table-name])
-  ([_ db-name table-name field-name] [table-name field-name]))
+  ([_ db-name]                        [db-name])
+  ([_ _db-name table-name]            [table-name])
+  ([_ _db-name table-name field-name] [table-name field-name]))
 
 (defn qualify-and-quote
   "Qualify names and combine into a single, quoted string. By default, this passes the results of
@@ -109,7 +112,6 @@
       (qualify-and-quote driver database-name table-name field-name)
       field-comment)))
 
-
 (defmulti inline-table-comment-sql
   "Return an inline `COMMENT` statement for a table."
   {:arglists '([driver comment])}
@@ -117,13 +119,6 @@
   :hierarchy #'driver/hierarchy)
 
 (defmethod inline-table-comment-sql :sql/test-extensions [_ _] nil)
-
-(defn standard-inline-table-comment-sql
-  "Implementation of `inline-table-comment-sql` for driver test extenstions that wish to use it."
-  [_ table-comment]
-  (when (seq table-comment)
-    (format "COMMENT '%s'" table-comment)))
-
 
 (defmulti standalone-table-comment-sql
   "Return standalone `COMMENT` statement for a table."
@@ -198,37 +193,42 @@
   tx/dispatch-on-driver-with-test-extensions
   :hierarchy #'driver/hierarchy)
 
+(defn- format-and-quote-field-name [driver field-name]
+  (sql.u/quote-name driver :field (ddl.i/format-name driver field-name)))
+
+(defn- field-definition-sql
+  [driver {:keys [field-name base-type field-comment not-null?], :as field-definition}]
+  (let [field-name (format-and-quote-field-name driver field-name)
+        field-type (or (cond
+                         (and (map? base-type) (contains? base-type :native))
+                         (:native base-type)
+
+                         (and (map? base-type) (contains? base-type :natives))
+                         (get-in base-type [:natives driver])
+
+                         base-type
+                         (field-base-type->sql-type driver base-type))
+                       (throw (ex-info (format "Missing datatype for field %s for driver: %s"
+                                               field-name driver)
+                                       {:field  field-definition
+                                        :driver driver})))
+        not-null       (when not-null?
+                         "NOT NULL")
+        inline-comment (inline-column-comment-sql driver field-comment)]
+    (str/join " " (filter some? [field-name field-type not-null inline-comment]))))
+
 (defmethod create-table-sql :sql/test-extensions
-  [driver {:keys [database-name], :as dbdef} {:keys [table-name field-definitions table-comment]}]
-  (let [quot          #(sql.u/quote-name driver :field (ddl.i/format-name driver %))
-        pk-field-name (quot (pk-field-name driver))]
+  [driver {:keys [database-name], :as _dbdef} {:keys [table-name field-definitions table-comment]}]
+  (let [pk-field-name (format-and-quote-field-name driver (pk-field-name driver))]
     (format "CREATE TABLE %s (%s %s, %s, PRIMARY KEY (%s)) %s;"
             (qualify-and-quote driver database-name table-name)
             pk-field-name (pk-sql-type driver)
             (str/join
              ", "
-             (for [{:keys [field-name base-type field-comment] :as field} field-definitions]
-               (str (format "%s %s"
-                            (quot field-name)
-                            (or (cond
-                                  (and (map? base-type) (contains? base-type :native))
-                                  (:native base-type)
-
-                                  (and (map? base-type) (contains? base-type :natives))
-                                  (get-in base-type [:natives driver])
-
-                                  base-type
-                                  (field-base-type->sql-type driver base-type))
-                                (throw (ex-info (format "Missing datatype for field %s for driver: %s"
-                                                        field-name driver)
-                                                {:field field
-                                                 :driver driver
-                                                 :database-name database-name}))))
-                    (when-let [comment (inline-column-comment-sql driver field-comment)]
-                      (str " " comment)))))
+             (for [field-def field-definitions]
+               (field-definition-sql driver field-def)))
             pk-field-name
             (or (inline-table-comment-sql driver table-comment) ""))))
-
 
 (defmulti drop-table-if-exists-sql
   {:arglists '([driver dbdef tabledef])}
@@ -246,7 +246,7 @@
 
 (defmulti add-fk-sql
   "Return a `ALTER TABLE ADD CONSTRAINT FOREIGN KEY` statement."
-  {:arglists '([driver dbdef tabledef, ^FieldDefinition fielddef])}
+  {:arglists '([driver dbdef tabledef fielddef])}
   tx/dispatch-on-driver-with-test-extensions
   :hierarchy #'driver/hierarchy)
 
@@ -267,7 +267,7 @@
             (quot :field (pk-field-name driver)))))
 
 (defmethod tx/count-with-template-tag-query :sql/test-extensions
-  [driver table field param-type]
+  [driver table field _param-type]
   ;; generate a SQL query like SELECT count(*) ... WHERE last_login = 1
   ;; then replace 1 with a template tag like {{last_login}}
   (driver/with-driver driver

@@ -1,7 +1,8 @@
 (ns metabase.mbql.normalize-test
-  (:require [clojure.set :as set]
-            [clojure.test :as t]
-            [metabase.mbql.normalize :as mbql.normalize]))
+  (:require
+   [clojure.set :as set]
+   [clojure.test :as t]
+   [metabase.mbql.normalize :as mbql.normalize]))
 
 (defn- tests {:style/indent 2} [f-symb f group->input->expected]
   (doseq [[group input->expected] group->input->expected]
@@ -64,7 +65,11 @@
     ":value clauses should keep snake_case keys in the type info arg"
     ;; See https://github.com/metabase/metabase/issues/23354 for details
     {[:value "some value" {:some_key "some key value"}]
-     [:value "some value" {:some_key "some key value"}]}))
+     [:value "some value" {:some_key "some key value"}]}
+
+    "nil options in aggregation and expression references should be removed"
+    {[:aggregation 0 nil]   [:aggregation 0]
+     [:expression "CE" nil] [:expression "CE"]}))
 
 ;;; -------------------------------------------------- aggregation ---------------------------------------------------
 
@@ -565,7 +570,16 @@
     {:query {:expressions {"prev_month" [:+ [:field-id 13] [:interval -1 :month]]}}}
 
     {:query {:expressions {:prev_month ["-" ["field-id" 13] ["interval" 1 "month"] ["interval" 1 "day"]]}}}
-    {:query {:expressions {"prev_month" [:- [:field-id 13] [:interval 1 :month] [:interval 1 :day]]}}}}
+    {:query {:expressions {"prev_month" [:- [:field-id 13] [:interval 1 :month] [:interval 1 :day]]}}}
+
+    {:query {:expressions {:datetime-diff ["datetime-diff" ["field" 1 nil] ["field" 2 nil] "month"]}}}
+    {:query {:expressions {"datetime-diff" [:datetime-diff [:field 1 nil] [:field 2 nil] :month]}}}
+
+    {:query {:expressions {:datetime-add ["datetime-add" ["field" 1 nil] 1 "month"]}}}
+    {:query {:expressions {"datetime-add" [:datetime-add [:field 1 nil] 1 :month]}}}
+
+    {:query {:expressions {:datetime-subtract ["datetime-subtract" ["field" 1 nil] 1 "month"]}}}
+    {:query {:expressions {"datetime-subtract" [:datetime-subtract [:field 1 nil] 1 :month]}}}}
 
    "expressions handle namespaced keywords correctly"
    {{:query {"expressions" {:abc/def ["+" 1 2]}
@@ -603,6 +617,15 @@
     "We should remove empty options maps"
     {[:field 2 {}]
      [:field 2 nil]}))
+
+(t/deftest ^:parallel canonicalize-substring-test
+  (canonicalize-tests
+   "substring index 0 -> 1"
+   {[:substring "foo" 0 1]
+    [:substring "foo" 1 1]
+
+    [:substring "foo" 0 1 3]
+    [:substring "foo" 1 1 3]}))
 
 
 ;;; ------------------------------------------------ binning strategy ------------------------------------------------
@@ -1179,12 +1202,12 @@
              (mbql.normalize/normalize
               {:database 1
                :native {:template-tags {"name" {:id "1f56330b-3dcb-75a3-8f3d-5c2c2792b749"
-                                               :name "name"
-                                               :display-name "Name"
-                                               :type "dimension"
-                                               :dimension ["field" 14 nil]
-                                               :widget-type "string/="
-                                               :default ["Hudson Borer"]}}
+                                                :name "name"
+                                                :display-name "Name"
+                                                :type "dimension"
+                                                :dimension ["field" 14 nil]
+                                                :widget-type "string/="
+                                                :default ["Hudson Borer"]}}
                         :query "select * from PEOPLE where {{name}}"}
                :type "native"
                :parameters []})))))
@@ -1424,3 +1447,15 @@
                                  [:field "date_seen" {:base-type :type/Date}]
                                  "2021-05-01T12:30:00"]}}
                (mbql.normalize/normalize query))))))
+
+(t/deftest ^:parallel normalize-aggregation-ref-test
+  (t/are [clause] (= {:database 1
+                      :type     :query
+                      :query    {:order-by [[:asc [:aggregation 0]]]}}
+                     (metabase.mbql.normalize/normalize
+                      {:database 1
+                       :type     :query
+                       :query    {:order-by [[:asc clause]]}}))
+    [:aggregation 0 nil]
+    [:aggregation 0 {}]
+    [:aggregation 0]))

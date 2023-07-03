@@ -1,4 +1,4 @@
-import React from "react";
+import { Fragment } from "react";
 import { IndexRoute, IndexRedirect } from "react-router";
 import { t } from "ttag";
 import { routerActions } from "react-router-redux";
@@ -19,7 +19,6 @@ import {
   createAdminRedirect,
 } from "metabase/admin/utils";
 
-import RedirectToAllowedSettings from "./settings/containers/RedirectToAllowedSettings";
 import AdminApp from "metabase/admin/app/components/AdminApp";
 import NewUserModal from "metabase/admin/people/containers/NewUserModal";
 import UserSuccessModal from "metabase/admin/people/containers/UserSuccessModal";
@@ -37,15 +36,13 @@ import DatabaseEditApp from "metabase/admin/databases/containers/DatabaseEditApp
 
 // Metadata / Data model
 import DataModelApp from "metabase/admin/datamodel/containers/DataModelApp";
-import MetadataEditorApp from "metabase/admin/datamodel/containers/MetadataEditorApp";
+import { getMetadataRoutes } from "metabase/admin/datamodel/metadata/routes";
 import MetricListApp from "metabase/admin/datamodel/containers/MetricListApp";
 import MetricApp from "metabase/admin/datamodel/containers/MetricApp";
 import SegmentListApp from "metabase/admin/datamodel/containers/SegmentListApp";
 import SegmentApp from "metabase/admin/datamodel/containers/SegmentApp";
 import RevisionHistoryApp from "metabase/admin/datamodel/containers/RevisionHistoryApp";
-import AdminPeopleApp from "metabase/admin/people/containers/AdminPeopleApp";
-import FieldApp from "metabase/admin/datamodel/containers/FieldApp";
-import TableSettingsApp from "metabase/admin/datamodel/containers/TableSettingsApp";
+import { AdminPeopleApp } from "metabase/admin/people/containers/AdminPeopleApp";
 
 import TroubleshootingApp from "metabase/admin/tasks/containers/TroubleshootingApp";
 import {
@@ -69,6 +66,7 @@ import getAdminPermissionsRoutes from "metabase/admin/permissions/routes";
 
 // Tools
 import Tools from "metabase/admin/tools/containers/Tools";
+import RedirectToAllowedSettings from "./settings/containers/RedirectToAllowedSettings";
 
 const UserCanAccessTools = UserAuthWrapper({
   predicate: isEnabled => isEnabled,
@@ -108,26 +106,8 @@ const getRoutes = (store, CanAccessSettings, IsAdmin) => (
       </Route>
 
       <Route path="datamodel" component={createAdminRouteGuard("data-model")}>
-        <Route title={t`Data Model`} component={DataModelApp}>
-          <IndexRedirect to="database" />
-          <Route path="database" component={MetadataEditorApp} />
-          <Route path="database/:databaseId" component={MetadataEditorApp} />
-          <Route
-            path="database/:databaseId/:mode"
-            component={MetadataEditorApp}
-          />
-          <Route
-            path="database/:databaseId/:mode/:tableId"
-            component={MetadataEditorApp}
-          />
-          <Route
-            path="database/:databaseId/:mode/:tableId/settings"
-            component={TableSettingsApp}
-          />
-          <Route path="database/:databaseId/:mode/:tableId/:fieldId">
-            <IndexRedirect to="general" />
-            <Route path=":section" component={FieldApp} />
-          </Route>
+        <Route title={t`Table Metadata`} component={DataModelApp}>
+          {getMetadataRoutes()}
           <Route path="metrics" component={MetricListApp} />
           <Route path="metric/create" component={MetricApp} />
           <Route path="metric/:id" component={MetricApp} />
@@ -221,9 +201,9 @@ const getRoutes = (store, CanAccessSettings, IsAdmin) => (
       </Route>
 
       {/* PLUGINS */}
-      <React.Fragment>
+      <Fragment>
         {PLUGIN_ADMIN_ROUTES.map(getRoutes => getRoutes(store))}
-      </React.Fragment>
+      </Fragment>
     </Route>
   </Route>
 );

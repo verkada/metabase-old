@@ -1,8 +1,9 @@
 (ns metabase.query-processor-test.case-test
-  (:require [clojure.test :refer :all]
-            [metabase.driver :as driver]
-            [metabase.models :refer [Metric Segment]]
-            [metabase.test :as mt]))
+  (:require
+   [clojure.test :refer :all]
+   [metabase.models :refer [Metric Segment]]
+   [metabase.test :as mt]
+   [toucan2.tools.with-temp :as t2.with-temp]))
 
 (defn- test-case
   [expr]
@@ -32,16 +33,16 @@
                                          [:ends-with [:field (mt/id :venues :name) nil] "t"]]]
                                        [:field (mt/id :venues :price) nil]]]]]))))
     (testing "Can we use segments in case"
-      (mt/with-temp Segment [{segment-id :id} {:table_id   (mt/id :venues)
-                                               :definition {:source-table (mt/id :venues)
-                                                            :filter       [:< [:field (mt/id :venues :price) nil] 4]}}]
+      (t2.with-temp/with-temp [Segment {segment-id :id} {:table_id   (mt/id :venues)
+                                                         :definition {:source-table (mt/id :venues)
+                                                                      :filter       [:< [:field (mt/id :venues :price) nil] 4]}}]
         (is (=  179.0  (test-case [:sum [:case [[[:segment segment-id] [:field (mt/id :venues :price) nil]]]]])))))
     (testing "Can we use case in metric"
-      (mt/with-temp Metric [{metric-id :id} {:table_id   (mt/id :venues)
-                                             :definition {:source-table (mt/id :venues)
-                                                          :aggregation  [:sum
-                                                                         [:case [[[:< [:field (mt/id :venues :price) nil] 4]
-                                                                                  [:field (mt/id :venues :price) nil]]]]]}}]
+      (t2.with-temp/with-temp [Metric {metric-id :id} {:table_id   (mt/id :venues)
+                                                       :definition {:source-table (mt/id :venues)
+                                                                    :aggregation  [:sum
+                                                                                   [:case [[[:< [:field (mt/id :venues :price) nil] 4]
+                                                                                            [:field (mt/id :venues :price) nil]]]]]}}]
         (is (= 179.0 (test-case [:metric metric-id])))))
     (testing "Can we use case with breakout"
       (is (= [[2 0.0]
@@ -88,33 +89,12 @@
   (testing "We should support expressions with two case statements (#15107)"
     (mt/test-drivers (mt/normal-drivers-with-feature :expressions)
       (mt/dataset sample-dataset
-        (is (= [[1
-                 "1018947080336"
-                 "Rustic Paper Wallet"
-                 "Gizmo"
-                 "Swaniawski, Casper and Hilll"
-                 29.46
-                 4.6
-                 (if (= driver/*driver* :sqlite)
-                   "2017-07-19T19:44:56Z"
-                   "2017-07-19T19:44:56.582Z")
-                 1]
-                [2
-                 "7663515285824"
-                 "Small Marble Shoes"
-                 "Doohickey"
-                 "Balistreri-Ankunding"
-                 70.08
-                 0.0
-                 (if (= driver/*driver* :sqlite)
-                   "2019-04-11T08:49:35Z"
-                   "2019-04-11T08:49:35.932Z")
-                 0]]
-               (mt/formatted-rows [int str str str str 2.0 2.0 str int]
-                 (mt/run-mbql-query products
-                   {:expressions
-                    {:TwoCases [:+
-                                [:case [[[:= $category "Widget"] 1]] {:default 0}]
-                                [:case [[[:> $rating 4] 1]] {:default 0}]]}
-                    :limit    2
-                    :order-by [[:asc $id]]}))))))))
+        (is (= [[1] [0]]
+               (mt/formatted-rows [int]
+                (mt/run-mbql-query products
+                  {:fields      [[:expression "two-cases"]]
+                   :expressions {"two-cases" [:+
+                                              [:case [[[:= $category "Widget"] 1]] {:default 0}]
+                                              [:case [[[:> $rating 4] 1]] {:default 0}]]}
+                   :limit    2
+                   :order-by [[:asc $id]]}))))))))

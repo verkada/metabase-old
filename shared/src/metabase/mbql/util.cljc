@@ -3,22 +3,27 @@
   (:refer-clojure :exclude [replace])
   #?@
   (:clj
-   [(:require [clojure.string :as str]
-              [clojure.tools.logging :as log]
-              [metabase.mbql.schema :as mbql.s]
-              [metabase.mbql.schema.helpers :as schema.helpers]
-              [metabase.mbql.util.match :as mbql.match]
-              [metabase.shared.util.i18n :as i18n]
-              metabase.util.i18n
-              [potemkin :as p]
-              [schema.core :as s])]
+   [(:require
+     [clojure.string :as str]
+     [metabase.mbql.predicates :as mbql.preds]
+     [metabase.mbql.schema :as mbql.s]
+     [metabase.mbql.schema.helpers :as schema.helpers]
+     [metabase.mbql.util.match :as mbql.match]
+     [metabase.models.dispatch :as models.dispatch]
+     [metabase.shared.util.i18n :as i18n]
+     [metabase.util.i18n]
+     [metabase.util.log :as log]
+     [potemkin :as p]
+     [schema.core :as s])]
    :cljs
-   [(:require [clojure.string :as str]
-              [metabase.mbql.schema :as mbql.s]
-              [metabase.mbql.schema.helpers :as schema.helpers]
-              [metabase.mbql.util.match :as mbql.match]
-              [metabase.shared.util.i18n :as i18n]
-              [schema.core :as s])]))
+   [(:require
+     [clojure.string :as str]
+     [metabase.mbql.predicates :as mbql.preds]
+     [metabase.mbql.schema :as mbql.s]
+     [metabase.mbql.schema.helpers :as schema.helpers]
+     [metabase.mbql.util.match :as mbql.match]
+     [metabase.shared.util.i18n :as i18n]
+     [schema.core :as s])]))
 
 (defn qualified-name
   "Like `name`, but if `x` is a namespace-qualified keyword, returns that a string including the namespace."
@@ -31,6 +36,7 @@
   "Convert a string or keyword in various cases (`lisp-case`, `snake_case`, or `SCREAMING_SNAKE_CASE`) to a lisp-cased
   keyword."
   [token :- schema.helpers/KeywordOrString]
+  #_{:clj-kondo/ignore [:discouraged-var]}
   (-> (qualified-name token)
       str/lower-case
       (str/replace #"_" "-")
@@ -249,11 +255,55 @@
                              [:relative-datetime :current]
                              [:relative-datetime 0 temporal-unit])))))
 
+(def temporal-extract-ops->unit
+  "Mapping from the sugar syntax to extract datetime to the unit."
+  {[:get-year        nil]       :year-of-era
+   [:get-quarter     nil]       :quarter-of-year
+   [:get-month       nil]       :month-of-year
+   ;; default get-week mode is iso
+   [:get-week        nil]       :week-of-year-iso
+   [:get-week        :iso]      :week-of-year-iso
+   [:get-week        :us]       :week-of-year-us
+   [:get-week        :instance] :week-of-year-instance
+   [:get-day         nil]       :day-of-month
+   [:get-day-of-week nil]       :day-of-week
+   [:get-hour        nil]       :hour-of-day
+   [:get-minute      nil]       :minute-of-hour
+   [:get-second      nil]       :second-of-minute})
+
+(def ^:private temporal-extract-ops
+  (->> (keys temporal-extract-ops->unit)
+       (map first)
+       set))
+
+(defn desugar-temporal-extract
+  "Replace datetime extractions clauses like `[:get-year field]` with `[:temporal-extract field :year]`."
+  [m]
+  (mbql.match/replace m
+    [(op :guard temporal-extract-ops) field & args]
+    [:temporal-extract field (temporal-extract-ops->unit [op (first args)])]))
+
+(defn- desugar-divide-with-extra-args [expression]
+  (mbql.match/replace expression
+    [:/ x y z & more]
+    (recur (into [:/ [:/ x y]] (cons z more)))))
+
+(s/defn desugar-expression :- mbql.s/FieldOrExpressionDef
+  "Rewrite various 'syntactic sugar' expressions like `:/` with more than two args into something simpler for drivers
+  to compile."
+  [expression :- mbql.s/FieldOrExpressionDef]
+  (-> expression
+      desugar-divide-with-extra-args))
+
+(defn- maybe-desugar-expression [clause]
+  (cond-> clause
+    (mbql.preds/FieldOrExpressionDef? clause) desugar-expression))
+
 (s/defn desugar-filter-clause :- mbql.s/Filter
   "Rewrite various 'syntatic sugar' filter clauses like `:time-interval` and `:inside` as simpler, logically
   equivalent clauses. This can be used to simplify the number of filter clauses that need to be supported by anything
   that needs to enumerate all the possible filter types (such as driver query processor implementations, or the
-  implementation `negate-filter-clause` below.)"
+  implementation [[negate-filter-clause]] below.)"
   [filter-clause :- mbql.s/Filter]
   (-> filter-clause
       desugar-current-relative-datetime
@@ -263,7 +313,9 @@
       desugar-is-null-and-not-null
       desugar-is-empty-and-not-empty
       desugar-inside
-      simplify-compound-filter))
+      simplify-compound-filter
+      desugar-temporal-extract
+      maybe-desugar-expression))
 
 (defmulti ^:private negate* first)
 
@@ -344,9 +396,15 @@
   "Dispatch function perfect for use with multimethods that dispatch off elements of an MBQL query. If `x` is an MBQL
   clause, dispatches off the clause name; otherwise dispatches off `x`'s class."
   ([x]
-   (if (mbql-clause? x)
-     (first x)
-     (type x)))
+   #?(:clj
+      (if (mbql-clause? x)
+        (first x)
+        (or (metabase.models.dispatch/model x)
+            (type x)))
+      :cljs
+      (if (mbql-clause? x)
+        (first x)
+        (type x))))
   ([x _]
    (dispatch-by-clause-name-or-class x)))
 
@@ -400,38 +458,6 @@
   correspond to objects in our application DB."
   [[_ id]]
   (ga-id? id))
-
-(defn temporal-field?
-  "Is `field` used to record something date or time related, i.e. does `field` have a base type or semantic type that
-  derives from `:type/Temporal`?"
-  [field]
-  (or (isa? (:base_type field)    :type/Temporal)
-      (isa? (:semantic_type field) :type/Temporal)))
-
-(defn time-field?
-  "Is `field` used to record a time of day (e.g. hour/minute/second), but not the date itself? i.e. does `field` have a
-  base type or semantic type that derives from `:type/Time`?"
-  [field]
-  (or (isa? (:base_type field)    :type/Time)
-      (isa? (:semantic_type field) :type/Time)))
-
-(defn temporal-but-not-time-field?
-  "Does `field` have a base type or semantic type that derives from `:type/Temporal`, but not `:type/Time`? (i.e., is
-  Field a Date or DateTime?)"
-  [field]
-  (and (temporal-field? field)
-       (not (time-field? field))))
-
-(defn datetime-arithmetics?
-  "Is a given artihmetics clause operating on datetimes?"
-  [clause]
-  (mbql.match/match-one clause
-    #{:interval :relative-datetime}
-    true
-
-    [:field _ (_ :guard :temporal-unit)]
-    true))
-
 
 ;;; --------------------------------- Unique names & transforming ags to have names ----------------------------------
 
@@ -683,8 +709,19 @@
   considered relevant when comparing clauses for equality."
   [field-or-ref]
   (update-field-options field-or-ref (partial into {} (remove (fn [[k _]]
-                                                                (when (keyword? k)
-                                                                  (namespace k)))))))
+                                                                (qualified-keyword? k))))))
+
+(defn referenced-field-ids
+  "Find all the `:field` references with integer IDs in `coll`, which can be a full MBQL query, a snippet of MBQL, or a
+  sequence of those things; return a set of Field IDs. Includes Fields referenced indirectly via `:source-field`.
+  Returns `nil` if no IDs are found."
+  [coll]
+  (not-empty
+   (into #{}
+         (comp cat (filter some?))
+         (mbql.match/match coll
+           [:field (id :guard integer?) opts]
+           [id (:source-field opts)]))))
 
 #?(:clj
    (p/import-vars

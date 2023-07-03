@@ -1,10 +1,10 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
+import { Component } from "react";
 import { connect } from "react-redux";
 
-import RevisionHistory from "../components/revisions/RevisionHistory";
 import Metrics from "metabase/entities/metrics";
 import Segments from "metabase/entities/segments";
+import RevisionHistory from "../components/revisions/RevisionHistory";
 
 import { getRevisions, getCurrentUser } from "../selectors";
 import { fetchRevisions } from "../datamodel";

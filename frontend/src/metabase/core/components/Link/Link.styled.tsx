@@ -1,26 +1,37 @@
 import styled from "@emotion/styled";
-import { display, space, hover, color } from "styled-system";
+import { css } from "@emotion/react";
 import { Link } from "react-router";
-import { color as colors } from "metabase/lib/colors";
+import { color as metabaseColor } from "metabase/lib/colors";
 import { shouldForwardNonTransientProp } from "metabase/lib/styling/emotion";
+import { focusOutlineStyle } from "metabase/core/style/input";
+
+import type { LinkProps } from "./types";
 
 export const LinkRoot = styled(Link, {
   shouldForwardProp: shouldForwardNonTransientProp,
-})`
-  ${display};
-  ${space};
-  ${hover};
-  ${color};
-
+})<LinkProps>`
   opacity: ${props => (props.disabled ? "0.4" : "")};
   pointer-events: ${props => (props.disabled ? "none" : "")};
   transition: opacity 0.3s linear;
 
-  &:focus {
-    outline: 2px solid ${() => colors("focus")};
-  }
+  ${focusOutlineStyle("brand")};
 
-  &:focus:not(:focus-visible) {
-    outline: none;
-  }
+  ${props => variants[props.variant ?? "default"] ?? ""}
 `;
+
+export const variants = {
+  default: "",
+  brand: css`
+    color: ${metabaseColor("brand")};
+    &:hover {
+      text-decoration: underline;
+    }
+  `,
+  brandBold: css`
+    color: ${metabaseColor("brand")};
+    font-weight: bold;
+    &:hover {
+      text-decoration: underline;
+    }
+  `,
+};

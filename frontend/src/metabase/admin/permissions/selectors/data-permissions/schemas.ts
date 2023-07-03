@@ -1,26 +1,24 @@
-import _ from "underscore";
-
-import { DATA_PERMISSION_OPTIONS } from "../../constants/data-permissions";
 import {
   getNativePermission,
   getSchemasPermission,
-  isRestrictivePermission,
 } from "metabase/admin/permissions/utils/graph";
 import {
-  NATIVE_PERMISSION_REQUIRES_DATA_ACCESS,
-  UNABLE_TO_CHANGE_ADMIN_PERMISSIONS,
-} from "../../constants/messages";
-import {
+  PLUGIN_ADMIN_PERMISSIONS_DATABASE_ACTIONS,
+  PLUGIN_ADMIN_PERMISSIONS_DATABASE_POST_ACTIONS,
   PLUGIN_ADVANCED_PERMISSIONS,
   PLUGIN_FEATURE_LEVEL_PERMISSIONS,
 } from "metabase/plugins";
+import { Group, GroupsPermissions } from "metabase-types/api";
+import { getNativePermissionDisabledTooltip } from "metabase/admin/permissions/selectors/data-permissions/shared";
+import type Database from "metabase-lib/metadata/Database";
+import { DATA_PERMISSION_OPTIONS } from "../../constants/data-permissions";
+import { UNABLE_TO_CHANGE_ADMIN_PERMISSIONS } from "../../constants/messages";
 import {
   getPermissionWarning,
   getPermissionWarningModal,
   getRawQueryWarningModal,
 } from "../confirmations";
 import { limitDatabasePermission } from "../../permissions";
-import { Group, GroupsPermissions } from "metabase-types/api";
 import { DatabaseEntityId } from "../../types";
 
 const buildAccessPermission = (
@@ -29,6 +27,7 @@ const buildAccessPermission = (
   isAdmin: boolean,
   permissions: GroupsPermissions,
   defaultGroup: Group,
+  database: Database,
 ) => {
   const accessPermissionConfirmations = (newValue: string) => [
     getPermissionWarningModal(
@@ -69,21 +68,20 @@ const buildAccessPermission = (
     value: accessPermissionValue,
     warning: accessPermissionWarning,
     confirmations: accessPermissionConfirmations,
-    options: PLUGIN_ADVANCED_PERMISSIONS.addDatabasePermissionOptions([
-      DATA_PERMISSION_OPTIONS.all,
-      DATA_PERMISSION_OPTIONS.controlled,
-      DATA_PERMISSION_OPTIONS.noSelfService,
-    ]),
+    options: PLUGIN_ADVANCED_PERMISSIONS.addDatabasePermissionOptions(
+      [
+        DATA_PERMISSION_OPTIONS.all,
+        DATA_PERMISSION_OPTIONS.controlled,
+        DATA_PERMISSION_OPTIONS.noSelfService,
+      ],
+      database,
+    ),
     postActions: {
       controlled: () =>
-        limitDatabasePermission(
-          groupId,
-          entityId,
-          PLUGIN_ADVANCED_PERMISSIONS.isBlockPermission(accessPermissionValue)
-            ? DATA_PERMISSION_OPTIONS.noSelfService.value
-            : null,
-        ),
+        limitDatabasePermission(groupId, entityId, accessPermissionValue),
+      ...PLUGIN_ADMIN_PERMISSIONS_DATABASE_POST_ACTIONS,
     },
+    actions: PLUGIN_ADMIN_PERMISSIONS_DATABASE_ACTIONS,
   };
 };
 
@@ -125,16 +123,16 @@ const buildNativePermission = (
     getRawQueryWarningModal(permissions, groupId, entityId, newValue),
   ];
 
-  const isNativePermissionDisabled =
-    isAdmin || isRestrictivePermission(accessPermissionValue);
+  const disabledTooltip = getNativePermissionDisabledTooltip(
+    isAdmin,
+    accessPermissionValue,
+  );
 
   return {
     permission: "data",
     type: "native",
-    isDisabled: isNativePermissionDisabled,
-    disabledTooltip: isAdmin
-      ? UNABLE_TO_CHANGE_ADMIN_PERMISSIONS
-      : NATIVE_PERMISSION_REQUIRES_DATA_ACCESS,
+    isDisabled: disabledTooltip != null,
+    disabledTooltip,
     isHighlighted: isAdmin,
     value: nativePermissionValue,
     warning: nativePermissionWarning,
@@ -149,6 +147,7 @@ export const buildSchemasPermissions = (
   isAdmin: boolean,
   permissions: GroupsPermissions,
   defaultGroup: Group,
+  database: Database,
 ) => {
   const accessPermission = buildAccessPermission(
     entityId,
@@ -156,6 +155,7 @@ export const buildSchemasPermissions = (
     isAdmin,
     permissions,
     defaultGroup,
+    database,
   );
 
   const nativePermission = buildNativePermission(

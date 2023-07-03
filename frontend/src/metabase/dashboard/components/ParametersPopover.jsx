@@ -1,12 +1,11 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
+import { Component } from "react";
 import { t } from "ttag";
-import { getDashboardParameterSections } from "metabase/parameters/utils/dashboard-options";
-import Icon from "metabase/components/Icon";
-import { getParameterIconName } from "metabase/parameters/utils/ui";
 import styled from "@emotion/styled";
-
 import _ from "underscore";
+import { getDashboardParameterSections } from "metabase/parameters/utils/dashboard-options";
+import { Icon } from "metabase/core/components/Icon";
+import { getParameterIconName } from "metabase/parameters/utils/ui";
 
 const PopoverBody = styled.div`
   max-width: 300px;

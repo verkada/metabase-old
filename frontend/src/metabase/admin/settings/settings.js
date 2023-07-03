@@ -4,10 +4,17 @@ import {
   handleActions,
   combineReducers,
 } from "metabase/lib/redux";
-import { SettingsApi, EmailApi, SlackApi, LdapApi } from "metabase/services";
+import {
+  SettingsApi,
+  EmailApi,
+  SlackApi,
+  LdapApi,
+  GoogleApi,
+  SamlApi,
+} from "metabase/services";
 import { refreshSiteSettings } from "metabase/redux/settings";
 
-// ACITON TYPES AND ACTION CREATORS
+// ACTION TYPES AND ACTION CREATORS
 
 export const reloadSettings = () => async (dispatch, getState) => {
   await Promise.all([
@@ -36,7 +43,7 @@ export const initializeSettings = createThunkAction(
     try {
       await dispatch(reloadSettings());
     } catch (error) {
-      console.log("error fetching settings", error);
+      console.error("error fetching settings", error);
       throw error;
     }
   },
@@ -50,7 +57,7 @@ export const updateSetting = createThunkAction(
       try {
         await SettingsApi.put(setting);
       } catch (error) {
-        console.log("error updating setting", setting, error);
+        console.error("error updating setting", setting, error);
         throw error;
       } finally {
         await dispatch(reloadSettings());
@@ -67,7 +74,7 @@ export const updateSettings = createThunkAction(
       try {
         await SettingsApi.putAll(settings);
       } catch (error) {
-        console.log("error updating settings", settings, error);
+        console.error("error updating settings", settings, error);
         throw error;
       } finally {
         await dispatch(reloadSettings());
@@ -87,7 +94,7 @@ export const updateEmailSettings = createThunkAction(
         await dispatch(reloadSettings());
         return result;
       } catch (error) {
-        console.log("error updating email settings", settings, error);
+        console.error("error updating email settings", settings, error);
         throw error;
       }
     };
@@ -100,7 +107,7 @@ export const sendTestEmail = createThunkAction(SEND_TEST_EMAIL, function () {
     try {
       await EmailApi.sendTest();
     } catch (error) {
-      console.log("error sending test email", error);
+      console.error("error sending test email", error);
       throw error;
     }
   };
@@ -118,15 +125,10 @@ export const UPDATE_SLACK_SETTINGS =
 export const updateSlackSettings = createThunkAction(
   UPDATE_SLACK_SETTINGS,
   function (settings) {
-    return async function (dispatch, getState) {
-      try {
-        const result = await SlackApi.updateSettings(settings);
-        await dispatch(reloadSettings());
-        return result;
-      } catch (error) {
-        console.log("error updating slack settings", settings, error);
-        throw error;
-      }
+    return async function (dispatch) {
+      const result = await SlackApi.updateSettings(settings);
+      await dispatch(reloadSettings());
+      return result;
     };
   },
   {},
@@ -137,15 +139,36 @@ export const UPDATE_LDAP_SETTINGS =
 export const updateLdapSettings = createThunkAction(
   UPDATE_LDAP_SETTINGS,
   function (settings) {
-    return async function (dispatch, getState) {
-      try {
-        const result = await LdapApi.updateSettings(settings);
-        await dispatch(reloadSettings());
-        return result;
-      } catch (error) {
-        console.log("error updating LDAP settings", settings, error);
-        throw error;
-      }
+    return async function (dispatch) {
+      const result = await LdapApi.updateSettings(settings);
+      await dispatch(reloadSettings());
+      return result;
+    };
+  },
+);
+
+export const UPDATE_SAML_SETTINGS =
+  "metabase/admin/settings/UPDATE_SAML_SETTINGS";
+export const updateSamlSettings = createThunkAction(
+  UPDATE_SAML_SETTINGS,
+  function (settings) {
+    return async function (dispatch) {
+      const result = await SamlApi.updateSettings(settings);
+      await dispatch(reloadSettings());
+      return result;
+    };
+  },
+);
+
+export const UPDATE_GOOGLE_SETTINGS =
+  "metabase/admin/settings/UPDATE_GOOGLE_SETTINGS";
+export const updateGoogleSettings = createThunkAction(
+  UPDATE_GOOGLE_SETTINGS,
+  function (settings) {
+    return async function (dispatch) {
+      const result = await GoogleApi.updateSettings(settings);
+      await dispatch(reloadSettings());
+      return result;
     };
   },
 );

@@ -1,26 +1,28 @@
 (ns metabase.driver.sqlite-test
-  (:require [clojure.java.io :as io]
-            [clojure.java.jdbc :as jdbc]
-            [clojure.test :refer :all]
-            [metabase.driver :as driver]
-            [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
-            [metabase.driver.sql.query-processor-test-util :as sql.qp-test-util]
-            [metabase.models.database :refer [Database]]
-            [metabase.models.table :refer [Table]]
-            [metabase.query-processor :as qp]
-            [metabase.query-processor-test :as qp.test]
-            [metabase.sync :as sync]
-            [metabase.test :as mt]
-            [metabase.test.data :as data]
-            [metabase.test.util :as tu]
-            [metabase.util :as u]
-            [toucan.db :as db]
-            [toucan.hydrate :refer [hydrate]]))
+  (:require
+   [clojure.java.io :as io]
+   [clojure.java.jdbc :as jdbc]
+   [clojure.test :refer :all]
+   [metabase.driver :as driver]
+   [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
+   [metabase.driver.sql.query-processor-test-util :as sql.qp-test-util]
+   [metabase.models.database :refer [Database]]
+   [metabase.models.table :refer [Table]]
+   [metabase.query-processor :as qp]
+   [metabase.query-processor-test :as qp.test]
+   [metabase.sync :as sync]
+   [metabase.test :as mt]
+   [metabase.test.data :as data]
+   [metabase.util :as u]
+   [toucan2.core :as t2]
+   [toucan2.tools.with-temp :as t2.with-temp]))
+
+(set! *warn-on-reflection* true)
 
 (deftest timezone-id-test
   (mt/test-driver :sqlite
-    (is (= "UTC"
-           (tu/db-timezone-id)))))
+    (is (= nil
+           (driver/db-default-timezone :sqlite (mt/db))))))
 
 (deftest filter-by-date-test
   (testing "Make sure filtering against a LocalDate works correctly in SQLite"
@@ -54,7 +56,7 @@
     (testing "Make sure we correctly infer complex types in views (#8630, #9276, #12191, #12547, #10681)"
       (let [details (mt/dbdef->connection-details :sqlite :db {:database-name "views_test"})
             spec    (sql-jdbc.conn/connection-details->spec :sqlite details)]
-        (mt/with-temp Database [{db-id :id :as database} {:engine :sqlite, :details (assoc details :dbname "views_test")}]
+        (t2.with-temp/with-temp [Database {db-id :id :as database} {:engine :sqlite, :details (assoc details :dbname "views_test")}]
           (doseq [statement ["drop view if exists v_groupby_test;"
                              "drop table if exists groupby_test;"
                              "drop view if exists v_src;"
@@ -74,7 +76,7 @@
                              :base_type :type/Integer}
                             {:name      "time"
                              :base_type :type/Text}]}]
-                 (->> (hydrate (db/select Table :db_id db-id {:order-by [:name]}) :fields)
+                 (->> (t2/hydrate (t2/select Table :db_id db-id {:order-by [:name]}) :fields)
                       (map table-fingerprint))))
           (doseq [statement ["drop view if exists v_groupby_test;"
                              "drop table if exists groupby_test;"
@@ -110,7 +112,7 @@
                              :base_type :type/Text}
                             {:name      "totalValue"
                              :base_type :type/Float}]}]
-                 (->> (hydrate (db/select Table :db_id db-id
+                 (->> (t2/hydrate (t2/select Table :db_id db-id
                                           {:where    [:in :name ["groupby_test" "v_groupby_test"]]
                                            :order-by [:name]}) :fields)
                       (map table-fingerprint)))))))))
@@ -130,7 +132,7 @@
                       "INSERT INTO timestamp_table (created_at) VALUES (datetime('now'));"]]
           (jdbc/execute! (sql-jdbc.conn/connection-details->spec driver details)
                          [stmt]))
-        (mt/with-temp Database [db {:engine driver :details (assoc details :dbname db-name)}]
+        (t2.with-temp/with-temp [Database db {:engine driver :details (assoc details :dbname db-name)}]
           (sync/sync-database! db)
           (mt/with-db db
             (testing "timestamp columns"
@@ -141,11 +143,14 @@
               (testing "timestamp column should exist"
                 (is (= {:name "timestamp_table"
                         :schema nil
-                        :fields #{{:name "created_at"
-                                   :database-type "TIMESTAMP"
-                                   :base-type :type/DateTime
-                                   :database-position 0}}}
-                       (driver/describe-table driver db (Table (mt/id :timestamp_table)))))))))))))
+                        :fields #{{:name                       "created_at"
+                                   :database-type              "TIMESTAMP"
+                                   :base-type                  :type/DateTime
+                                   :database-position          0
+                                   :database-required          false
+                                   :json-unfolding             false
+                                   :database-is-auto-increment false}}}
+                       (driver/describe-table driver db (t2/select-one Table :id (mt/id :timestamp_table)))))))))))))
 
 (deftest select-query-datetime
   (mt/test-driver :sqlite
@@ -166,7 +171,7 @@
                       ('null',            null,                      null,          null);"]]
         (jdbc/execute! (sql-jdbc.conn/connection-details->spec :sqlite details)
                        [stmt]))
-      (mt/with-temp Database [db {:engine :sqlite :details (assoc details :dbname db-name)}]
+      (t2.with-temp/with-temp [Database db {:engine :sqlite :details (assoc details :dbname db-name)}]
         (sync/sync-database! db)
         ;; In SQLite, you can actually store any value in any date/timestamp column,
         ;; let's test only values we'd reasonably run into.
@@ -174,57 +179,50 @@
         ;;         some upper layer will handle it.
         (mt/with-db db
           (testing "select datetime stored as unix epoch"
-            (is (= [["2021-08-25T04:18:24Z"                 ; TIMESTAMP
-                     "2021-08-25T00:00:00Z"                 ; DATE
-                     "2021-08-25T04:18:24Z"]]               ; DATETIME
+            (is (= [["2021-08-25T04:18:24Z"   ; TIMESTAMP
+                     "2021-08-25T00:00:00Z"   ; DATE
+                     "2021-08-25T04:18:24Z"]] ; DATETIME
                    (qp.test/rows
-                     (mt/run-mbql-query :datetime_table
-                                        {:fields [$col_timestamp $col_date $col_datetime]
-                                         :filter [:= $test_case "epoch"]})))))
+                    (mt/run-mbql-query datetime_table
+                      {:fields [$col_timestamp $col_date $col_datetime]
+                       :filter [:= $test_case "epoch"]})))))
           (testing "select datetime stored as string with milliseconds"
-            (is (= [["2021-08-25 04:18:24.111"              ; TIMESTAMP (raw string)
-                     "2021-08-25T04:18:24.111Z"]]           ; DATETIME
+            (is (= [["2021-08-25T04:18:24.111Z"   ; TIMESTAMP (raw string)
+                     "2021-08-25T04:18:24.111Z"]] ; DATETIME
                    (qp.test/rows
-                     (mt/run-mbql-query :datetime_table
-                                        {:fields [$col_timestamp $col_datetime]
-                                         :filter [:= $test_case "iso8601-ms"]})))))
+                    (mt/run-mbql-query datetime_table
+                      {:fields [$col_timestamp $col_datetime]
+                       :filter [:= $test_case "iso8601-ms"]})))))
           (testing "select datetime stored as string without milliseconds"
-            (is (= [["2021-08-25 04:18:24"                  ; TIMESTAMP (raw string)
-                     "2021-08-25T04:18:24Z"]]               ; DATETIME
+            (is (= [["2021-08-25T04:18:24Z"   ; TIMESTAMP (raw string)
+                     "2021-08-25T04:18:24Z"]] ; DATETIME
                    (qp.test/rows
-                     (mt/run-mbql-query :datetime_table
-                                        {:fields [$col_timestamp $col_datetime]
-                                         :filter [:= $test_case "iso8601-no-ms"]})))))
+                    (mt/run-mbql-query datetime_table
+                      {:fields [$col_timestamp $col_datetime]
+                       :filter [:= $test_case "iso8601-no-ms"]})))))
           (testing "select date stored as string without time"
-            (is (= [["2021-08-25T00:00:00Z"]]               ; DATE
+            (is (= [["2021-08-25T00:00:00Z"]] ; DATE
                    (qp.test/rows
-                     (mt/run-mbql-query :datetime_table
-                                        {:fields [$col_date]
-                                         :filter [:= $test_case "iso8601-no-time"]})))))
+                    (mt/run-mbql-query datetime_table
+                      {:fields [$col_date]
+                       :filter [:= $test_case "iso8601-no-time"]})))))
           (testing "select NULL"
             (is (= [[nil nil nil]]
                    (qp.test/rows
-                     (mt/run-mbql-query :datetime_table
-                                        {:fields [$col_timestamp $col_date $col_datetime]
-                                         :filter [:= $test_case "null"]}))))))))))
+                    (mt/run-mbql-query datetime_table
+                      {:fields [$col_timestamp $col_date $col_datetime]
+                       :filter [:= $test_case "null"]}))))))))))
 
 (deftest duplicate-identifiers-test
   (testing "Make sure duplicate identifiers (even with different cases) get unique aliases"
     (mt/test-driver :sqlite
       (mt/dataset sample-dataset
         (is (= '{:select   [source.CATEGORY_2 AS CATEGORY_2
-                            count (*)         AS count]
-                 :from     [{:select [products.id              AS id
-                                      products.ean             AS ean
-                                      products.title           AS title
-                                      products.category        AS category
-                                      products.vendor          AS vendor
-                                      products.price           AS price
-                                      products.rating          AS rating
-                                      products.created_at      AS created_at
-                                      (products.category || ?) AS CATEGORY_2]
+                            COUNT (*)         AS count]
+                 :from     [{:select [products.category       AS category
+                                      products.category || ?  AS CATEGORY_2]
                              :from   [products]}
-                            source]
+                            AS source]
                  :group-by [source.CATEGORY_2]
                  :order-by [source.CATEGORY_2 ASC]
                  :limit    [1]}

@@ -1,6 +1,4 @@
-import React from "react";
-
-import moment from "moment";
+import moment from "moment-timezone";
 import DateAllOptionsWidget from "metabase/components/DateAllOptionsWidget";
 
 interface DateSingleWidgetProps {
@@ -20,4 +18,5 @@ const DateSingleWidget = ({ value, ...props }: DateSingleWidgetProps) => {
   );
 };
 
+// eslint-disable-next-line import/no-default-export -- deprecated usage
 export default DateSingleWidget;

@@ -1,22 +1,22 @@
 /* eslint-disable react/prop-types */
-import React from "react";
+import { Component } from "react";
 import { connect } from "react-redux";
 import { goBack } from "react-router-redux";
 import { t } from "ttag";
 import _ from "underscore";
 
 import User from "metabase/entities/users";
-import { clearTemporaryPassword } from "../people";
-import { getUserTemporaryPassword } from "../selectors";
 
 import MetabaseSettings from "metabase/lib/settings";
 
 import Button from "metabase/core/components/Button";
 import ModalContent from "metabase/components/ModalContent";
 import PasswordReveal from "metabase/components/PasswordReveal";
+import { getUserTemporaryPassword } from "../selectors";
+import { clearTemporaryPassword } from "../people";
 import { ButtonContainer } from "./UserPasswordResetModal.styled";
 
-class UserPasswordResetModal extends React.Component {
+class UserPasswordResetModal extends Component {
   componentWillUnmount() {
     this.props.clearTemporaryPassword(this.props.params.userId);
   }
@@ -41,7 +41,7 @@ class UserPasswordResetModal extends React.Component {
 
         <ButtonContainer>
           <Button
-            ml="auto"
+            className="ml-auto"
             onClick={async () => {
               if (emailConfigured) {
                 await user.resetPasswordEmail();

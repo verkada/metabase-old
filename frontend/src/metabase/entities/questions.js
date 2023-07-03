@@ -1,20 +1,25 @@
+import { t } from "ttag";
+import { updateIn } from "icepick";
+
 import { createEntity, undo } from "metabase/lib/entities";
 import * as Urls from "metabase/lib/urls";
 import { color } from "metabase/lib/colors";
-
 import {
-  API_UPDATE_QUESTION,
-  SOFT_RELOAD_CARD,
-} from "metabase/query_builder/actions";
+  getMetadata,
+  getMetadataUnfiltered,
+} from "metabase/selectors/metadata";
 
 import Collections, {
   getCollectionType,
   normalizedCollection,
 } from "metabase/entities/collections";
-import { canonicalCollectionId } from "metabase/collections/utils";
+import {
+  API_UPDATE_QUESTION,
+  SOFT_RELOAD_CARD,
+} from "metabase/query_builder/actions";
 
+import { canonicalCollectionId } from "metabase/collections/utils";
 import forms from "./questions/forms";
-import { updateIn } from "icepick";
 
 const Questions = createEntity({
   name: "questions",
@@ -22,18 +27,18 @@ const Questions = createEntity({
   path: "/api/card",
 
   objectActions: {
-    setArchived: ({ id, model }, archived, opts) =>
+    setArchived: ({ id, dataset, model }, archived, opts) =>
       Questions.actions.update(
         { id },
         { archived },
         undo(
           opts,
-          model === "dataset" ? "model" : "question",
-          archived ? "archived" : "unarchived",
+          dataset || model === "dataset" ? t`model` : t`question`,
+          archived ? t`archived` : t`unarchived`,
         ),
       ),
 
-    setCollection: ({ id, model }, collection, opts) => {
+    setCollection: ({ id, dataset, model }, collection, opts) => {
       return async dispatch => {
         const result = await dispatch(
           Questions.actions.update(
@@ -41,16 +46,26 @@ const Questions = createEntity({
             {
               collection_id: canonicalCollectionId(collection && collection.id),
             },
-            undo(opts, model === "dataset" ? "model" : "question", "moved"),
+            undo(
+              opts,
+              dataset || model === "dataset" ? t`model` : t`question`,
+              t`moved`,
+            ),
           ),
         );
         dispatch(
-          Collections.actions.fetchList({ tree: true }, { reload: true }),
+          Collections.actions.fetchList(
+            {
+              tree: true,
+              "exclude-archived": true,
+            },
+            { reload: true },
+          ),
         );
 
         const card = result?.payload?.question;
         if (card) {
-          dispatch.action(API_UPDATE_QUESTION, card);
+          dispatch({ type: API_UPDATE_QUESTION, payload: card });
         }
 
         return result;
@@ -71,9 +86,22 @@ const Questions = createEntity({
       Questions.actions.update({ id }, { collection_preview }, opts),
   },
 
+  selectors: {
+    getObject: (state, { entityId }) => getMetadata(state).question(entityId),
+    getObjectUnfiltered: (state, { entityId }) =>
+      getMetadataUnfiltered(state).question(entityId),
+    getListUnfiltered: (state, { entityQuery }) => {
+      const entityIds =
+        Questions.selectors.getEntityIds(state, { entityQuery }) ?? [];
+      return entityIds.map(entityId =>
+        Questions.selectors.getObjectUnfiltered(state, { entityId }),
+      );
+    },
+  },
+
   objectSelectors: {
     getName: question => question && question.name,
-    getUrl: question => question && Urls.question(question),
+    getUrl: (question, opts) => question && Urls.question(question, opts),
     getColor: () => color("text-medium"),
     getCollection: question =>
       question && normalizedCollection(question.collection),
@@ -123,7 +151,7 @@ const Questions = createEntity({
   forms,
 });
 
-function getIcon(question) {
+export function getIcon(question) {
   if (question.dataset || question.model === "dataset") {
     return { name: "model" };
   }

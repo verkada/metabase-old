@@ -1,23 +1,26 @@
-import React from "react";
 import { t } from "ttag";
-
-import { PLUGIN_MODERATION, PLUGIN_CACHING } from "metabase/plugins";
-
-import MetabaseSettings from "metabase/lib/settings";
-
-import QuestionActivityTimeline from "metabase/query_builder/components/QuestionActivityTimeline";
-
-import Question from "metabase-lib/lib/Question";
-import { Card } from "metabase-types/types/Card";
 
 import EditableText from "metabase/core/components/EditableText";
 
+import { PLUGIN_MODERATION, PLUGIN_CACHING } from "metabase/plugins";
+
+import * as Urls from "metabase/lib/urls";
+
+import Link from "metabase/core/components/Link";
+import { QuestionActivityTimeline } from "metabase/query_builder/components/QuestionActivityTimeline";
+
+import Question from "metabase-lib/Question";
+
 import ModelCacheManagementSection from "./ModelCacheManagementSection";
-import { Root, ContentSection, Header } from "./QuestionInfoSidebar.styled";
+import {
+  Root,
+  ContentSection,
+  HeaderContainer,
+} from "./QuestionInfoSidebar.styled";
 
 interface QuestionInfoSidebarProps {
   question: Question;
-  onSave: (card: Card) => Promise<Question>;
+  onSave: (question: Question) => Promise<Question>;
 }
 
 export const QuestionInfoSidebar = ({
@@ -28,27 +31,32 @@ export const QuestionInfoSidebar = ({
   const canWrite = question.canWrite();
   const isDataset = question.isDataset();
   const isPersisted = isDataset && question.isPersisted();
-  const isCachingAvailable =
-    !isDataset &&
-    PLUGIN_CACHING.isEnabled() &&
-    MetabaseSettings.get("enable-query-caching");
+  const hasCacheSection = PLUGIN_CACHING.hasQuestionCacheSection(question);
 
   const handleSave = (description: string | null) => {
     if (question.description() !== description) {
-      onSave(question.setDescription(description).card());
+      onSave(question.setDescription(description));
     }
   };
 
   const handleUpdateCacheTTL = (cache_ttl: number | undefined) => {
     if (question.cacheTTL() !== cache_ttl) {
-      return onSave(question.setCacheTTL(cache_ttl).card());
+      return onSave(question.setCacheTTL(cache_ttl));
     }
   };
 
   return (
     <Root>
       <ContentSection>
-        <Header>{t`About`}</Header>
+        <HeaderContainer>
+          <h3>{t`About`}</h3>
+          {question.isDataset() && (
+            <Link
+              variant="brand"
+              to={Urls.modelDetail(question.card())}
+            >{t`Model details`}</Link>
+          )}
+        </HeaderContainer>
         <EditableText
           initialValue={description}
           placeholder={
@@ -56,6 +64,7 @@ export const QuestionInfoSidebar = ({
           }
           isOptional
           isMultiline
+          isMarkdown
           isDisabled={!canWrite}
           onChange={handleSave}
         />
@@ -68,7 +77,7 @@ export const QuestionInfoSidebar = ({
         </ContentSection>
       )}
 
-      {isCachingAvailable && (
+      {hasCacheSection && (
         <ContentSection extraPadding>
           <PLUGIN_CACHING.QuestionCacheSection
             question={question}

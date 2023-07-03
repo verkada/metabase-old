@@ -8,34 +8,6 @@ summary: |
 
 /api/database endpoints.
 
-  - [DELETE /api/database/:id](#delete-apidatabaseid)
-  - [GET /api/database/](#get-apidatabase)
-  - [GET /api/database/:id](#get-apidatabaseid)
-  - [GET /api/database/:id/autocomplete_suggestions](#get-apidatabaseidautocomplete_suggestions)
-  - [GET /api/database/:id/fields](#get-apidatabaseidfields)
-  - [GET /api/database/:id/idfields](#get-apidatabaseididfields)
-  - [GET /api/database/:id/metadata](#get-apidatabaseidmetadata)
-  - [GET /api/database/:id/schema/](#get-apidatabaseidschema)
-  - [GET /api/database/:id/schema/:schema](#get-apidatabaseidschemaschema)
-  - [GET /api/database/:id/schemas](#get-apidatabaseidschemas)
-  - [GET /api/database/:virtual-db/datasets](#get-apidatabasevirtual-dbdatasets)
-  - [GET /api/database/:virtual-db/datasets/:schema](#get-apidatabasevirtual-dbdatasetsschema)
-  - [GET /api/database/:virtual-db/metadata](#get-apidatabasevirtual-dbmetadata)
-  - [GET /api/database/:virtual-db/schema/:schema](#get-apidatabasevirtual-dbschemaschema)
-  - [GET /api/database/:virtual-db/schemas](#get-apidatabasevirtual-dbschemas)
-  - [GET /api/database/db-ids-with-deprecated-drivers](#get-apidatabasedb-ids-with-deprecated-drivers)
-  - [POST /api/database/](#post-apidatabase)
-  - [POST /api/database/:id/discard_values](#post-apidatabaseiddiscard_values)
-  - [POST /api/database/:id/dismiss_spinner](#post-apidatabaseiddismiss_spinner)
-  - [POST /api/database/:id/persist](#post-apidatabaseidpersist)
-  - [POST /api/database/:id/rescan_values](#post-apidatabaseidrescan_values)
-  - [POST /api/database/:id/sync](#post-apidatabaseidsync)
-  - [POST /api/database/:id/sync_schema](#post-apidatabaseidsync_schema)
-  - [POST /api/database/:id/unpersist](#post-apidatabaseidunpersist)
-  - [POST /api/database/sample_database](#post-apidatabasesample_database)
-  - [POST /api/database/validate](#post-apidatabasevalidate)
-  - [PUT /api/database/:id](#put-apidatabaseid)
-
 ## `DELETE /api/database/:id`
 
 Delete a `Database`.
@@ -54,13 +26,6 @@ Fetch all `Databases`.
 
   * `saved` means we should include the saved questions virtual database. Default: `false`.
 
-  * `include_tables` is a legacy alias for `include=tables`, but should be considered deprecated as of 0.35.0, and will
-    be removed in a future release.
-
-  * `include_cards` here means we should also include virtual Table entries for saved Questions, e.g. so we can easily
-    use them as source Tables in queries. This is a deprecated alias for `saved=true` + `include=tables` (for the saved
-    questions virtual DB). Prefer using `include` and `saved` instead.
-
   * `include_editable_data_model` will only include DBs for which the current user has data model editing
     permissions. (If `include=tables`, this also applies to the list of tables in each DB). Should only be used if
     Enterprise Edition code is available the advanced-permissions feature is enabled.
@@ -68,19 +33,21 @@ Fetch all `Databases`.
   * `exclude_uneditable_details` will only include DBs for which the current user can edit the DB details. Has no
     effect unless Enterprise Edition code is available and the advanced-permissions feature is enabled.
 
+  * `include_only_uploadable` will only include DBs into which Metabase can insert new data.
+
 ### PARAMS:
-
-*  **`include_tables`** value may be nil, or if non-nil, value must be a valid boolean string ('true' or 'false').
-
-*  **`include_cards`** value may be nil, or if non-nil, value must be a valid boolean string ('true' or 'false').
 
 *  **`include`** include must be either empty or the value tables
 
-*  **`saved`** value may be nil, or if non-nil, value must be a valid boolean string ('true' or 'false').
+*  **`saved`** nullable boolean
 
-*  **`include_editable_data_model`** value may be nil, or if non-nil, value must be a valid boolean string ('true' or 'false').
+*  **`include_editable_data_model`** nullable boolean
 
-*  **`exclude_uneditable_details`** value may be nil, or if non-nil, value must be a valid boolean string ('true' or 'false').
+*  **`exclude_uneditable_details`** nullable boolean
+
+*  **`include_only_uploadable`** nullable boolean
+
+*  **`include_analytics`** nullable boolean
 
 ## `GET /api/database/:id`
 
@@ -106,9 +73,10 @@ Get a single Database with `id`. Optionally pass `?include=tables` or `?include=
 
 ## `GET /api/database/:id/autocomplete_suggestions`
 
-Return a list of autocomplete suggestions for a given `prefix`.
+Return a list of autocomplete suggestions for a given `prefix`, or `substring`. Should only specify one, but
+  `substring` will have priority if both are present.
 
-  This is intened for use with the ACE Editor when the User is typing raw SQL. Suggestions include matching `Tables`
+  This is intended for use with the ACE Editor when the User is typing raw SQL. Suggestions include matching `Tables`
   and `Fields` in this `Database`.
 
   Tables are returned in the format `[table_name "Table"]`;
@@ -117,11 +85,23 @@ Return a list of autocomplete suggestions for a given `prefix`.
 
 ### PARAMS:
 
-*  **`id`** 
+*  **`id`** value must be an integer.
 
-*  **`prefix`** 
+*  **`prefix`** value may be nil, or if non-nil, value must be a non-blank string.
 
-*  **`search`**
+*  **`substring`** value may be nil, or if non-nil, value must be a non-blank string.
+
+## `GET /api/database/:id/card_autocomplete_suggestions`
+
+Return a list of `Card` autocomplete suggestions for a given `query` in a given `Database`.
+
+  This is intended for use with the ACE Editor when the User is typing in a template tag for a `Card`, e.g. {{#...}}.
+
+### PARAMS:
+
+*  **`id`** value must be an integer.
+
+*  **`query`** value must be a non-blank string.
 
 ## `GET /api/database/:id/fields`
 
@@ -165,7 +145,11 @@ Return a list of Tables for a Database whose `schema` is `nil` or an empty strin
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
+
+*  **`include_hidden`** nullable value must be a valid boolean string ('true' or 'false').
+
+*  **`include_editable_data_model`** nullable value must be a valid boolean string ('true' or 'false').
 
 ## `GET /api/database/:id/schema/:schema`
 
@@ -173,17 +157,44 @@ Returns a list of Tables for the given Database `id` and `schema`.
 
 ### PARAMS:
 
-*  **`id`** 
+*  **`id`** value must be an integer greater than zero.
+
+*  **`include_hidden`** nullable value must be a valid boolean string ('true' or 'false').
+
+*  **`include_editable_data_model`** nullable value must be a valid boolean string ('true' or 'false').
 
 *  **`schema`**
 
 ## `GET /api/database/:id/schemas`
 
-Returns a list of all the schemas found for the database `id`.
+Returns a list of all the schemas with tables found for the database `id`. Excludes schemas with no tables.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
+
+*  **`include_editable_data_model`** nullable value must be a valid boolean string ('true' or 'false').
+
+*  **`include_hidden`** nullable value must be a valid boolean string ('true' or 'false').
+
+## `GET /api/database/:id/syncable_schemas`
+
+Returns a list of all syncable schemas found for the database `id`.
+
+### PARAMS:
+
+*  **`id`** value must be an integer greater than zero.
+
+## `GET /api/database/:id/usage_info`
+
+Get usage info for a database.
+  Returns a map with keys are models and values are the number of entities that use this database.
+
+You must be a superuser to do this.
+
+### PARAMS:
+
+*  **`id`** value must be an integer greater than zero.
 
 ## `GET /api/database/:virtual-db/datasets`
 
@@ -273,15 +284,7 @@ Trigger a manual scan of the field values for this `Database`.
 
 ### PARAMS:
 
-*  **`id`**
-
-## `POST /api/database/:id/sync`
-
-Update the metadata for this `Database`. This happens asynchronously.
-
-### PARAMS:
-
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `POST /api/database/:id/sync_schema`
 
@@ -289,7 +292,7 @@ Trigger a manual update of the schema metadata for this `Database`.
 
 ### PARAMS:
 
-*  **`id`**
+*  **`id`** value must be an integer greater than zero.
 
 ## `POST /api/database/:id/unpersist`
 

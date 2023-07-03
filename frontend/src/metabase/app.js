@@ -1,12 +1,15 @@
-import "core-js/stable";
 import "regenerator-runtime/runtime";
-import { GoogleOAuthProvider } from "@react-oauth/google";
 
 // Use of classList.add and .remove in Background and FitViewPort Hocs requires
 // this polyfill so that those work in older browsers
 import "classlist-polyfill";
 
 import "number-to-locale-string";
+
+// This is conditionally aliased in the webpack config.
+// If EE isn't enabled, it loads an empty file.
+// Should be imported before any other metabase import
+import "ee-overrides"; // eslint-disable-line import/no-duplicates
 
 // If enabled this monkeypatches `t` and `jt` to return blacked out
 // strings/elements to assist in finding untranslated strings.
@@ -23,26 +26,10 @@ import "metabase/plugins/builtin";
 
 // This is conditionally aliased in the webpack config.
 // If EE isn't enabled, it loads an empty file.
-import "ee-plugins"; // eslint-disable-line import/no-unresolved
+import "ee-plugins"; // eslint-disable-line import/no-duplicates
 
-import { PLUGIN_APP_INIT_FUCTIONS } from "metabase/plugins";
-
-import registerVisualizations from "metabase/visualizations/register";
-
-import React from "react";
 import ReactDOM from "react-dom";
 import { Provider } from "react-redux";
-import { ThemeProvider } from "@emotion/react";
-
-import { createTracker } from "metabase/lib/analytics";
-import MetabaseSettings from "metabase/lib/settings";
-
-import api from "metabase/lib/api";
-import { initializeEmbedding } from "metabase/lib/embed";
-
-import { getStore } from "./store";
-
-import { refreshSiteSettings } from "metabase/redux/settings";
 
 // router
 import { Router, useRouterHistory } from "react-router";
@@ -52,8 +39,17 @@ import { syncHistoryWithStore } from "react-router-redux";
 // drag and drop
 import HTML5Backend from "react-dnd-html5-backend";
 import { DragDropContextProvider } from "react-dnd";
+import { ThemeProvider } from "metabase/ui";
+import { refreshSiteSettings } from "metabase/redux/settings";
+import { initializeEmbedding } from "metabase/lib/embed";
+import api from "metabase/lib/api";
+import MetabaseSettings from "metabase/lib/settings";
+import { createTracker } from "metabase/lib/analytics";
+import registerVisualizations from "metabase/visualizations/register";
+import { PLUGIN_APP_INIT_FUCTIONS } from "metabase/plugins";
 
 import GlobalStyles from "metabase/styled-components/containers/GlobalStyles";
+import { getStore } from "./store";
 
 // remove trailing slash
 const BASENAME = window.MetabaseRoot.replace(/\/+$/, "");
@@ -65,31 +61,24 @@ const browserHistory = useRouterHistory(createHistory)({
   basename: BASENAME,
 });
 
-const theme = {
-  space: [4, 8, 16, 32, 64, 128],
-};
-
 function _init(reducers, getRoutes, callback) {
   const store = getStore(reducers, browserHistory);
   const routes = getRoutes(store);
   const history = syncHistoryWithStore(browserHistory, store);
-  const googleAuthClientId = MetabaseSettings.get("google-auth-client-id");
 
   let root;
 
   createTracker(store);
 
   ReactDOM.render(
-    <GoogleOAuthProvider clientId={googleAuthClientId}>
-      <Provider store={store} ref={ref => (root = ref)}>
-        <DragDropContextProvider backend={HTML5Backend} context={{ window }}>
-          <ThemeProvider theme={theme}>
-            <GlobalStyles />
-            <Router history={history}>{routes}</Router>
-          </ThemeProvider>
-        </DragDropContextProvider>
-      </Provider>
-    </GoogleOAuthProvider>,
+    <Provider store={store} ref={ref => (root = ref)}>
+      <DragDropContextProvider backend={HTML5Backend} context={{ window }}>
+        <ThemeProvider>
+          <GlobalStyles />
+          <Router history={history}>{routes}</Router>
+        </ThemeProvider>
+      </DragDropContextProvider>
+    </Provider>,
     document.getElementById("root"),
   );
 

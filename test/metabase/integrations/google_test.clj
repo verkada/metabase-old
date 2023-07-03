@@ -1,12 +1,17 @@
 (ns metabase.integrations.google-test
-  (:require [clojure.test :refer :all]
-            [metabase.email-test :as et]
-            [metabase.integrations.google :as google]
-            [metabase.integrations.google.interface :as google.i]
-            [metabase.models.user :refer [User]]
-            [metabase.public-settings.premium-features :as premium-features]
-            [metabase.test :as mt]
-            [toucan.db :as db]))
+  (:require
+   [clojure.test :refer :all]
+   [metabase.email-test :as et]
+   [metabase.integrations.google :as google]
+   [metabase.integrations.google.interface :as google.i]
+   [metabase.models.interface :as mi]
+   [metabase.models.user :refer [User]]
+   [metabase.public-settings.premium-features :as premium-features]
+   [metabase.test :as mt]
+   [toucan2.core :as t2]
+   [toucan2.tools.with-temp :as t2.with-temp]))
+
+(set! *warn-on-reflection* true)
 
 ;;; --------------------------------------------- google-auth-client-id ----------------------------------------------
 
@@ -32,9 +37,8 @@
 (deftest allow-autocreation-test
   (with-redefs [premium-features/enable-sso? (constantly false)]
     (mt/with-temporary-setting-values [google-auth-auto-create-accounts-domain "metabase.com"]
-      (are [allowed? email] (is (= allowed?
-                                   (#'google/autocreate-user-allowed-for-email? email))
-                                (format "Can we autocreate an account for email '%s'?" email))
+      (are [allowed? email] (= allowed?
+                               (#'google/autocreate-user-allowed-for-email? email))
         true  "cam@metabase.com"
         false "cam@expa.com"))))
 
@@ -66,7 +70,7 @@
               (is (= {:first_name "Rasta", :last_name "Toucan", :email "rasta@sf-toucannery.com"}
                      (select-keys user [:first_name :last_name :email]))))
             (finally
-              (db/delete! User :email "rasta@sf-toucannery.com"))))))))
+              (t2/delete! User :email "rasta@sf-toucannery.com"))))))))
 
 
 ;;; --------------------------------------------- google-auth-token-info ---------------------------------------------
@@ -126,12 +130,12 @@
 (deftest google-auth-fetch-or-create-user!-test
   (with-redefs [premium-features/enable-sso? (constantly false)]
     (testing "test that an existing user can log in with Google auth even if the auto-create accounts domain is different from"
-      (mt/with-temp User [user {:email "cam@sf-toucannery.com"}]
+      (t2.with-temp/with-temp [User _ {:email "cam@sf-toucannery.com"}]
         (mt/with-temporary-setting-values [google-auth-auto-create-accounts-domain "metabase.com"]
           (testing "their account should return a UserInstance"
-            (is (schema= metabase.models.user.UserInstance
-                         (#'google/google-auth-fetch-or-create-user!
-                          "Cam" "Saul" "cam@sf-toucannery.com")))))))
+            (is (mi/instance-of? User
+                                 (#'google/google-auth-fetch-or-create-user!
+                                  "Cam" "Saul" "cam@sf-toucannery.com")))))))
 
     (testing "test that a user that doesn't exist with a *different* domain than the auto-create accounts domain gets an exception"
       (mt/with-temporary-setting-values [google-auth-auto-create-accounts-domain nil
@@ -146,8 +150,8 @@
         (mt/with-temporary-setting-values [google-auth-auto-create-accounts-domain "sf-toucannery.com"
                                            admin-email                             "rasta@toucans.com"]
           (try
-            (is (schema= metabase.models.user.UserInstance
-                         (#'google/google-auth-fetch-or-create-user!
-                          "Rasta" "Toucan" "rasta@sf-toucannery.com")))
+            (is (mi/instance-of? User
+                                 (#'google/google-auth-fetch-or-create-user!
+                                  "Rasta" "Toucan" "rasta@sf-toucannery.com")))
             (finally
-              (db/delete! User :email "rasta@sf-toucannery.com"))))))))
+              (t2/delete! User :email "rasta@sf-toucannery.com"))))))))

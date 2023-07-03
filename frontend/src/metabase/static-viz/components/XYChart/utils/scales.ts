@@ -7,25 +7,28 @@ import {
   scaleTime,
 } from "@visx/scale";
 import {
+  getX,
+  getY,
+} from "metabase/static-viz/components/XYChart/utils/series";
+import type {
+  ContinuousDomain,
+  Range,
+} from "metabase/visualizations/shared/types/scale";
+import type {
   SeriesDatum,
   XAxisType,
-  ContiniousDomain,
-  Range,
   Series,
   YAxisType,
   HydratedSeries,
   StackedDatum,
+  XScale,
 } from "metabase/static-viz/components/XYChart/types";
-import {
-  getX,
-  getY,
-} from "metabase/static-viz/components/XYChart/utils/series";
 
 export const createXScale = (
   series: Series[],
   range: Range,
   axisType: XAxisType,
-) => {
+): XScale => {
   const hasBars = series.some(series => series.type === "bar");
   const isOrdinal = axisType === "ordinal";
 
@@ -40,7 +43,7 @@ export const createXScale = (
     const xScale = scaleBand({
       domain,
       range,
-      padding: 0.1,
+      padding: 0.2,
     });
 
     return {
@@ -87,8 +90,10 @@ export const createXScale = (
 
 const calculateYDomain = (
   series: HydratedSeries[],
+  minValueSetting?: number,
+  maxValueSetting?: number,
   goalValue?: number,
-): ContiniousDomain => {
+): ContinuousDomain => {
   const values = series
     .flatMap<SeriesDatum | StackedDatum>(
       series => series.stackedData ?? series.data,
@@ -98,13 +103,15 @@ const calculateYDomain = (
   const maxValue = max(values);
 
   return [
-    Math.min(0, minValue, goalValue ?? 0),
-    Math.max(0, maxValue, goalValue ?? 0),
+    Math.min(0, minValue, minValueSetting ?? 0, goalValue ?? 0),
+    Math.max(0, maxValue, maxValueSetting ?? 0, goalValue ?? 0),
   ];
 };
 
 export const calculateYDomains = (
   series: HydratedSeries[],
+  minValueSetting?: number,
+  maxValueSetting?: number,
   goalValue?: number,
 ) => {
   const leftScaleSeries = series.filter(
@@ -115,20 +122,39 @@ export const calculateYDomains = (
   );
 
   if (leftScaleSeries.length > 0 && rightScaleSeries.length === 0) {
-    return { left: calculateYDomain(leftScaleSeries, goalValue) };
+    return {
+      left: calculateYDomain(
+        leftScaleSeries,
+        minValueSetting,
+        maxValueSetting,
+        goalValue,
+      ),
+    };
   }
   if (rightScaleSeries.length > 0 && leftScaleSeries.length === 0) {
-    return { right: calculateYDomain(rightScaleSeries, goalValue) };
+    return {
+      right: calculateYDomain(
+        rightScaleSeries,
+        minValueSetting,
+        maxValueSetting,
+        goalValue,
+      ),
+    };
   }
 
   return {
-    left: calculateYDomain(leftScaleSeries, goalValue),
-    right: calculateYDomain(rightScaleSeries),
+    left: calculateYDomain(
+      leftScaleSeries,
+      minValueSetting,
+      maxValueSetting,
+      goalValue,
+    ),
+    right: calculateYDomain(rightScaleSeries, minValueSetting, maxValueSetting),
   };
 };
 
 export const createYScale = (
-  domain: ContiniousDomain,
+  domain: ContinuousDomain,
   range: Range,
   axisType: YAxisType,
 ) => {
@@ -156,8 +182,8 @@ export const createYScale = (
 export const createYScales = (
   range: Range,
   axisType: YAxisType,
-  leftYDomain?: ContiniousDomain,
-  rightYDomain?: ContiniousDomain,
+  leftYDomain?: ContinuousDomain,
+  rightYDomain?: ContinuousDomain,
 ) => {
   return {
     yScaleLeft: leftYDomain ? createYScale(leftYDomain, range, axisType) : null,

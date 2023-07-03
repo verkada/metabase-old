@@ -120,7 +120,7 @@ Add these people to a group (or create a new group) that has permissions to view
 
 **Steps to take:**
 
-Go to **Admin** > **Data model** and find the table. Check to make sure that the fields you want to make visible are not hidden.
+Go to **Admin** > **Table Metadata** and find the table. Check to make sure that the fields you want to make visible are not hidden.
 
 ### Is a field remapped to display info from a restricted table?
 
@@ -128,7 +128,7 @@ Go to **Admin** > **Data model** and find the table. Check to make sure that the
 
 **Steps to take:**
 
-1. Go to **Admin Panel** > **Data model** for the fields in question.
+1. Go to **Admin Panel** > **Table Metadata** for the fields in question.
 2. If the value is remapped from a restricted table, change it so that Metabase will use the original value from the table. See [Metadata editing][data-model] for more information.
 
 ### Is the question available via signed embedding?
@@ -163,19 +163,19 @@ The administrator can [create a new group][groups] to capture precisely who's al
 - [I have a different permissions issue][troubleshooting-permissions].
 - [I can't see my tables][cant-see-tables].
 
-[authenticating-with-saml]: ../enterprise-guide/authenticating-with-saml.html
-[cant-see-tables]: cant-see-tables.html
-[column-permissions]: /learn/permissions/data-sandboxing-column-permissions.html
-[data-model]: ../administration-guide/03-metadata-editing.html
-[data-permissions]: /learn/permissions/data-permissions.html
-[groups]: ../administration-guide/04-managing-users.html#groups
-[jwt-auth]: ../enterprise-guide/authenticating-with-jwt.html
-[locked-parameters]: /learn/embedding/embedding-charts-and-dashboards.html#hide-or-lock-parameters-to-restrict-what-data-is-shown
-[permissions]: /learn/permissions/data-permissions.html
-[public-sharing]: ../administration-guide/12-public-links.html
-[row-permissions]: /learn/permissions/data-sandboxing-row-permissions.html
-[sandboxing-your-data]: ../enterprise-guide/data-sandboxes.html
-[signed-embedding]: /learn/embedding/embedding-charts-and-dashboards.html#enable-embedding-in-other-applications
-[sandbox-limitations]: ../enterprise-guide/data-sandboxes.html#current-limitations
-[troubleshooting-permissions]: ./permissions.html
-[unsupported-databases]: ../enterprise-guide/data-sandboxes.html#data-sandboxes-do-not-support-non-sql-databases
+[authenticating-with-saml]: ../people-and-groups/authenticating-with-saml.md
+[cant-see-tables]: cant-see-tables.md
+[column-permissions]: https://www.metabase.com/learn/permissions/data-sandboxing-column-permissions
+[data-model]: ../data-modeling/metadata-editing.md
+[data-permissions]: https://www.metabase.com/learn/permissions/data-permissions
+[groups]: ../people-and-groups/managing.md#groups
+[jwt-auth]: ../people-and-groups/authenticating-with-jwt.md
+[locked-parameters]: https://www.metabase.com/learn/customer-facing-analytics/embedding-charts-and-dashboards#hide-or-lock-parameters-to-restrict-what-data-is-shown
+[permissions]: https://www.metabase.com/learn/permissions/data-permissions
+[public-sharing]: ../questions/sharing/public-links.md
+[row-permissions]: https://www.metabase.com/learn/permissions/data-sandboxing-row-permissions
+[sandboxing-your-data]: ../permissions/data-sandboxes.md
+[signed-embedding]: https://www.metabase.com/learn/customer-facing-analytics/embedding-charts-and-dashboards#enable-embedding-in-other-applications
+[sandbox-limitations]: ../permissions/data-sandboxes.md#limitations
+[troubleshooting-permissions]: ./permissions.md
+[unsupported-databases]: ../permissions/data-sandboxes.md#limitations

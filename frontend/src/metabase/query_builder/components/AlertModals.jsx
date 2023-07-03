@@ -1,21 +1,21 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from "react";
+/* eslint-disable  react/jsx-key */
+import { Component } from "react";
 import { connect } from "react-redux";
 import { t, jt, ngettext, msgid } from "ttag";
 import _ from "underscore";
 
 // components
 import Button from "metabase/core/components/Button";
-import SchedulePicker from "metabase/components/SchedulePicker";
+import SchedulePicker from "metabase/containers/SchedulePicker";
 import ModalContent from "metabase/components/ModalContent";
 import DeleteModalWithConfirm from "metabase/components/DeleteModalWithConfirm";
 import ModalWithTrigger from "metabase/components/ModalWithTrigger";
 import Radio from "metabase/core/components/Radio";
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import ChannelSetupModal from "metabase/components/ChannelSetupModal";
 import ButtonWithStatus from "metabase/components/ButtonWithStatus";
 import PulseEditChannels from "metabase/pulse/components/PulseEditChannels";
-import { AlertModalFooter, DangerZone } from "./AlertModals.styled";
 
 import User from "metabase/entities/users";
 
@@ -38,17 +38,18 @@ import {
 } from "metabase/pulse/selectors";
 
 // lib
-import {
-  ALERT_TYPE_PROGRESS_BAR_GOAL,
-  ALERT_TYPE_ROWS,
-  ALERT_TYPE_TIMESERIES_GOAL,
-  getDefaultAlert,
-} from "metabase-lib/lib/Alert";
 import MetabaseCookies from "metabase/lib/cookies";
 import * as MetabaseAnalytics from "metabase/lib/analytics";
 
 // types
 import { alertIsValid } from "metabase/lib/alert";
+import {
+  ALERT_TYPE_PROGRESS_BAR_GOAL,
+  ALERT_TYPE_ROWS,
+  ALERT_TYPE_TIMESERIES_GOAL,
+  getDefaultAlert,
+} from "metabase-lib/Alert";
+import { AlertModalFooter, DangerZone } from "./AlertModals.styled";
 
 const getScheduleFromChannel = channel =>
   _.pick(
@@ -101,7 +102,7 @@ class CreateAlertModalContentInner extends Component {
     const { alert } = this.state;
 
     await createAlert(alert);
-    await updateUrl(question.card(), { dirty: false });
+    await updateUrl(question, { dirty: false });
 
     onAlertCreated();
     MetabaseAnalytics.trackStructEvent(
@@ -296,7 +297,7 @@ class UpdateAlertModalContentInner extends Component {
 
     await apiUpdateQuestion();
     await updateAlert(modifiedAlert);
-    await updateUrl(question.card(), { dirty: false });
+    await updateUrl(question, { dirty: false });
     onAlertUpdated();
 
     MetabaseAnalytics.trackStructEvent(
@@ -405,8 +406,8 @@ export class DeleteAlertSection extends Component {
             <ModalWithTrigger
               ref={ref => (this.deleteModal = ref)}
               as={Button}
-              triggerClasses="Button--danger flex-align-right flex-no-shrink"
-              triggerElement={t`Delete this Alert`}
+              triggerClasses="Button--danger flex-align-right flex-no-shrink align-self-end"
+              triggerElement={t`Delete this alert`}
             >
               <DeleteModalWithConfirm
                 objectType="alert"

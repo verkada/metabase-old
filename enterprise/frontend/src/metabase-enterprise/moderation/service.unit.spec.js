@@ -1,3 +1,4 @@
+import { ModerationReviewApi } from "metabase/services";
 import {
   verifyItem,
   removeReview,
@@ -16,8 +17,6 @@ jest.mock("metabase/services", () => ({
     create: jest.fn(() => Promise.resolve({ id: 123 })),
   },
 }));
-
-import { ModerationReviewApi } from "metabase/services";
 
 describe("moderation/service", () => {
   beforeEach(() => {
@@ -260,12 +259,12 @@ describe("moderation/service", () => {
 
       expect(getModerationTimelineEvents(reviews, usersById)).toEqual([
         {
-          timestamp: expect.any(Number),
+          timestamp: reviews[0].created_at,
           icon: getStatusIcon("verified"),
           title: "Foo verified this",
         },
         {
-          timestamp: expect.any(Number),
+          timestamp: reviews[1].created_at,
           icon: getRemovedReviewStatusIcon(),
           title: "A moderator removed verification",
         },

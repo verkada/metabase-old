@@ -1,16 +1,15 @@
-import React, { Component } from "react";
+import { Component } from "react";
+import * as React from "react";
 import ReactDOM from "react-dom";
-
-import { UtilApi } from "metabase/services";
-
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
-
 import reactAnsiStyle from "react-ansi-style";
 import "react-ansi-style/inject-css";
 
 import _ from "underscore";
-import moment from "moment";
+import moment from "moment-timezone";
 import { t } from "ttag";
+
+import { UtilApi } from "metabase/services";
+import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
 
 import Select, { Option } from "metabase/core/components/Select";
 import { addCSSRule } from "metabase/lib/dom";

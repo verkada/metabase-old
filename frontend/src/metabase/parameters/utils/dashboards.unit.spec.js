@@ -1,19 +1,23 @@
+import { createMockMetadata } from "__support__/metadata";
 import {
   createParameter,
   setParameterName,
-  setParameterDefaultValue,
   hasMapping,
   isDashboardParameterWithoutMapping,
   getParametersMappedToDashcard,
   hasMatchingParameters,
   getFilteringParameterValuesMap,
-  getParameterValuesSearchKey,
-  getTargetField,
   getDashboardUiParameters,
 } from "metabase/parameters/utils/dashboards";
-import Field from "metabase-lib/lib/metadata/Field";
+import {
+  createSampleDatabase,
+  PRODUCTS,
+} from "metabase-types/api/mocks/presets";
+import Field from "metabase-lib/metadata/Field";
 
-import { PRODUCTS, metadata } from "__support__/sample_database_fixture";
+const metadata = createMockMetadata({
+  databases: [createSampleDatabase()],
+});
 
 describe("metabase/parameters/utils/dashboards", () => {
   describe("createParameter", () => {
@@ -98,15 +102,6 @@ describe("metabase/parameters/utils/dashboards", () => {
       expect(setParameterName({}, "")).toEqual({
         name: "unnamed",
         slug: "unnamed",
-      });
-    });
-  });
-
-  describe("setParameterDefaultValue", () => {
-    it("should set a `default` property on a parameter", () => {
-      expect(setParameterDefaultValue({ foo: "bar" }, 123)).toEqual({
-        foo: "bar",
-        default: 123,
       });
     });
   });
@@ -529,108 +524,6 @@ describe("metabase/parameters/utils/dashboards", () => {
     });
   });
 
-  describe("getParameterValuesSearchKey", () => {
-    it("should return a string using the given props related to parameter value searching", () => {
-      expect(
-        getParameterValuesSearchKey({
-          dashboardId: "123",
-          parameterId: "456",
-          query: "foo",
-          filteringParameterValues: {
-            a: "aaa",
-            b: "bbb",
-          },
-        }),
-      ).toEqual(
-        'dashboardId: 123, parameterId: 456, query: foo, filteringParameterValues: [["a","aaa"],["b","bbb"]]',
-      );
-    });
-
-    it("should default `query` to null", () => {
-      expect(
-        getParameterValuesSearchKey({
-          dashboardId: "123",
-          parameterId: "456",
-          filteringParameterValues: {
-            a: "aaa",
-            b: "bbb",
-          },
-        }),
-      ).toEqual(
-        'dashboardId: 123, parameterId: 456, query: null, filteringParameterValues: [["a","aaa"],["b","bbb"]]',
-      );
-    });
-
-    it("should sort the entries in the `filteringParameterValues` object", () => {
-      expect(
-        getParameterValuesSearchKey({
-          dashboardId: "123",
-          parameterId: "456",
-          filteringParameterValues: {
-            b: "bbb",
-            a: "aaa",
-          },
-        }),
-      ).toEqual(
-        'dashboardId: 123, parameterId: 456, query: null, filteringParameterValues: [["a","aaa"],["b","bbb"]]',
-      );
-    });
-
-    it("should handle there being no filteringParameterValues", () => {
-      expect(
-        getParameterValuesSearchKey({
-          dashboardId: "123",
-          parameterId: "456",
-          query: "abc",
-        }),
-      ).toEqual(
-        "dashboardId: 123, parameterId: 456, query: abc, filteringParameterValues: []",
-      );
-    });
-  });
-
-  describe("getTargetField", () => {
-    const target = ["dimension", ["field", 4, null]];
-
-    const metadata = {
-      field: jest.fn(),
-    };
-
-    it("should return null when given a card without a `dataset_query`", () => {
-      const card = {
-        id: 1,
-      };
-
-      expect(getTargetField(target, card, metadata)).toBe(null);
-    });
-
-    it("should return the field that maps to the mapping target", () => {
-      const field = {
-        id: 4,
-        name: "foo",
-      };
-
-      metadata.field.mockImplementation(id => {
-        if (id === 4) {
-          return field;
-        }
-      });
-
-      const card = {
-        id: 1,
-        dataset_query: {
-          type: "query",
-          database: 1,
-          query: {
-            "source-table": 1,
-          },
-        },
-      };
-
-      expect(getTargetField(target, card, metadata)).toEqual(field);
-    });
-  });
-
   describe("getDashboardUiParameters", () => {
     const dashboard = {
       id: 1,
@@ -649,17 +542,17 @@ describe("metabase/parameters/utils/dashboards", () => {
             {
               card_id: 789,
               parameter_id: "d",
-              target: ["dimension", ["field", PRODUCTS.RATING.id, null]],
+              target: ["dimension", ["field", PRODUCTS.RATING, null]],
             },
             {
               card_id: 123,
               parameter_id: "f",
-              target: ["dimension", ["field", PRODUCTS.TITLE.id, null]],
+              target: ["dimension", ["field", PRODUCTS.TITLE, null]],
             },
             {
               card_id: 123,
               parameter_id: "g",
-              target: ["dimension", ["field", PRODUCTS.TITLE.id, null]],
+              target: ["dimension", ["field", PRODUCTS.TITLE, null]],
             },
           ],
         },
@@ -679,7 +572,7 @@ describe("metabase/parameters/utils/dashboards", () => {
                   bar: {
                     type: "dimension",
                     "widget-type": "string/contains",
-                    dimension: ["field", PRODUCTS.TITLE.id, null],
+                    dimension: ["field", PRODUCTS.TITLE, null],
                   },
                 },
               },
@@ -711,12 +604,12 @@ describe("metabase/parameters/utils/dashboards", () => {
             {
               card_id: 999,
               parameter_id: "g",
-              target: ["dimension", ["field", PRODUCTS.CATEGORY.id, null]],
+              target: ["dimension", ["field", PRODUCTS.CATEGORY, null]],
             },
             {
               card_id: 999,
               parameter_id: "h",
-              target: ["dimension", ["field", PRODUCTS.CATEGORY.id, null]],
+              target: ["dimension", ["field", PRODUCTS.CATEGORY, null]],
             },
           ],
         },

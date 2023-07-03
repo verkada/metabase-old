@@ -1,4 +1,5 @@
 import _ from "underscore";
+import querystring from "querystring";
 import { isCypressActive } from "metabase/env";
 import MetabaseSettings from "metabase/lib/settings";
 
@@ -10,13 +11,13 @@ export const getScrollY = () =>
 
 // denotes whether the current page is loaded in an iframe or not
 // Cypress renders the whole app within an iframe, but we want to exlude it from this check to avoid certain components (like Nav bar) not rendering
-export const IFRAMED = (function () {
+export const isWithinIframe = function () {
   try {
     return !isCypressActive && window.self !== window.top;
   } catch (e) {
     return true;
   }
-})();
+};
 
 // add a global so we can check if the parent iframe is Metabase
 window.METABASE = true;
@@ -246,6 +247,8 @@ export function constrainToScreen(element, direction, padding) {
   return false;
 }
 
+const isAbsoluteUrl = url => url.startsWith("/");
+
 function getWithSiteUrl(url) {
   const siteUrl = MetabaseSettings.get("site-url");
   return url.startsWith("/") ? siteUrl + url : url;
@@ -295,14 +298,23 @@ export function open(
     openInSameWindow = url => clickLink(url, false),
     // custom function for opening in new window
     openInBlankWindow = url => clickLink(url, true),
+    // custom function for opening in same app instance
+    openInSameOrigin = openInSameWindow,
     ignoreSiteUrl = false,
     ...options
   } = {},
 ) {
+  const isOriginalUrlAbsolute = isAbsoluteUrl(url); // this does not check real "absolute" url, but if a url should be resolved from the root URL
   url = ignoreSiteUrl ? url : getWithSiteUrl(url);
 
   if (shouldOpenInBlankWindow(url, options)) {
     openInBlankWindow(url);
+  } else if (isSameOrigin(url)) {
+    if (isOriginalUrlAbsolute) {
+      clickLink(url, false);
+    } else {
+      openInSameOrigin(url, getLocation(url));
+    }
   } else {
     openInSameWindow(url);
   }
@@ -347,20 +359,49 @@ export function shouldOpenInBlankWindow(
     return true;
   } else if (blankOnMetaOrCtrlKey && (isMetaKey || isCtrlKey)) {
     return true;
-  } else if (blankOnDifferentOrigin && !isSameOrigin(url)) {
+  } else if (blankOnDifferentOrigin && !isSameOrSiteUrlOrigin(url)) {
     return true;
   }
   return false;
 }
 
-const a = document.createElement("a"); // reuse the same tag for performance
+const getOrigin = url => {
+  try {
+    return new URL(url, window.location.origin).origin;
+  } catch {
+    return null;
+  }
+};
+
+const getLocation = url => {
+  try {
+    const { pathname, search, hash } = new URL(url, window.location.origin);
+    const query = querystring.parse(search.substring(1));
+    return { pathname, search, query, hash };
+  } catch {
+    return {};
+  }
+};
+
 export function isSameOrigin(url) {
-  a.href = url;
-  return a.origin === window.location.origin;
+  const origin = getOrigin(url);
+  return origin == null || origin === window.location.origin;
+}
+
+function isSiteUrlOrigin(url) {
+  const siteUrl = getOrigin(MetabaseSettings.get("site-url"));
+  const urlOrigin = getOrigin(url);
+  return siteUrl === urlOrigin;
+}
+
+// When a url is either has the same origin or it is the same with the site url
+// we want to open it in the same window (https://github.com/metabase/metabase/issues/24451)
+export function isSameOrSiteUrlOrigin(url) {
+  return isSameOrigin(url) || isSiteUrlOrigin(url);
 }
 
 export function getUrlTarget(url) {
-  return isSameOrigin(url) ? "_self" : "_blank";
+  return isSameOrSiteUrlOrigin(url) ? "_self" : "_blank";
 }
 
 export function removeAllChildren(element) {
@@ -399,7 +440,7 @@ export function clipPathReference(id) {
 }
 
 export function initializeIframeResizer(readyCallback = () => {}) {
-  if (!IFRAMED) {
+  if (!isWithinIframe()) {
     return;
   }
 
@@ -443,7 +484,7 @@ export function isEventOverElement(event, element) {
 }
 
 export function isReducedMotionPreferred() {
-  const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const mediaQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   return mediaQuery && mediaQuery.matches;
 }
 
@@ -456,3 +497,19 @@ export function isSmallScreen() {
   const mediaQuery = window.matchMedia("(max-width: 40em)");
   return mediaQuery && mediaQuery.matches;
 }
+
+/**
+ * @param {MouseEvent<Element, MouseEvent>} event
+ */
+export const getEventTarget = event => {
+  let target = document.getElementById("popover-event-target");
+  if (!target) {
+    target = document.createElement("div");
+    target.id = "popover-event-target";
+    document.body.appendChild(target);
+  }
+  target.style.left = event.clientX - 3 + "px";
+  target.style.top = event.clientY - 3 + "px";
+
+  return target;
+};

@@ -1,8 +1,9 @@
 (ns metabase.mbql.util-test
-  (:require [clojure.string :as str]
-            [clojure.test :as t]
-            [metabase.mbql.util :as mbql.u]
-            metabase.types))
+  (:require
+   [clojure.string :as str]
+   [clojure.test :as t]
+   [metabase.mbql.util :as mbql.u]
+   [metabase.types]))
 
 (comment metabase.types/keep-me)
 
@@ -362,6 +363,29 @@
     (t/is (= [:not [:contains [:field 1 nil] "ABC" {:case-sensitive false}]]
              (mbql.u/desugar-filter-clause [:does-not-contain [:field 1 nil] "ABC" {:case-sensitive false}])))))
 
+(t/deftest ^:parallel desugar-temporal-extract-test
+  (t/testing "desugaring :get-year, :get-month, etc"
+    (doseq [[[op mode] unit] mbql.u/temporal-extract-ops->unit]
+      (t/is (= [:temporal-extract [:field 1 nil] unit]
+               (mbql.u/desugar-temporal-extract [op [:field 1 nil] mode])))
+
+      (t/is (= [:+ [:temporal-extract [:field 1 nil] unit] 1]
+               (mbql.u/desugar-temporal-extract [:+ [op [:field 1 nil] mode] 1]))))))
+
+(t/deftest ^:parallel desugar-divide-with-extra-args-test
+  (t/testing `mbql.u/desugar-expression
+    (t/are [expression expected] (= expected
+                                    (mbql.u/desugar-expression expression))
+      [:/ 1 2]     [:/ 1 2]
+      [:/ 1 2 3]   [:/ [:/ 1 2] 3]
+      [:/ 1 2 3 4] [:/ [:/ [:/ 1 2] 3] 4]))
+  (t/testing `mbql.u/desugar-filter-clause
+    (t/are [expression expected] (= expected
+                                    (mbql.u/desugar-filter-clause expression))
+      [:= 1 [:/ 1 2]]     [:= 1 [:/ 1 2]]
+      [:= 1 [:/ 1 2 3]]   [:= 1 [:/ [:/ 1 2] 3]]
+      [:= 1 [:/ 1 2 3 4]] [:= 1 [:/ [:/ [:/ 1 2] 3] 4]])))
+
 (t/deftest ^:parallel negate-simple-filter-clause-test
   (t/testing :=
     (t/is (= [:!= [:field 1 nil] 10]
@@ -564,12 +588,12 @@
 
 
     (t/testing "ok, can we do the same thing as the tests above but make those names *unique* at the same time?"
-      (t/is (= [[:aggregation-options [:sum [:field 1 nil]]   {:name "sum"}  ]
+      (t/is (= [[:aggregation-options [:sum [:field 1 nil]]   {:name "sum"}]
                 [:aggregation-options [:count [:field 1 nil]] {:name "count"}]
                 [:aggregation-options [:sum [:field 1 nil]]   {:name "sum_2"}]
-                [:aggregation-options [:avg [:field 1 nil]]   {:name "avg"}  ]
+                [:aggregation-options [:avg [:field 1 nil]]   {:name "avg"}]
                 [:aggregation-options [:sum [:field 1 nil]]   {:name "sum_3"}]
-                [:aggregation-options [:min [:field 1 nil]]   {:name "min"}  ]]
+                [:aggregation-options [:min [:field 1 nil]]   {:name "min"}]]
                (mbql.u/pre-alias-and-uniquify-aggregations simple-ag->name
                  [[:sum [:field 1 nil]]
                   [:count [:field 1 nil]]
@@ -630,6 +654,7 @@
                 (unique-name :x "A")
                 (unique-name :y "A")]))))
 
+  #_{:clj-kondo/ignore [:discouraged-var]}
   (t/testing "options"
     (t/testing :name-key-fn
       (let [f (mbql.u/unique-name-generator :name-key-fn str/lower-case)]
@@ -701,20 +726,12 @@
            "if nothing is set return `nil`"
            {{:database 1
              :type     :query
-             :query    {:source-table 1}} nil}} ]
+             :query    {:source-table 1}} nil}}]
     (t/testing group
       (doseq [[query expected] query->expected]
         (t/testing (pr-str (list 'query->max-rows-limit query))
           (t/is (= expected
                    (mbql.u/query->max-rows-limit query))))))))
-
-(t/deftest ^:parallel datetime-arithmetics?-test
-  (t/is (mbql.u/datetime-arithmetics?
-         [:+ [:field-id 13] [:interval -1 :month]]))
-  (t/is (mbql.u/datetime-arithmetics?
-         [:field "a" {:temporal-unit :month}]))
-  (t/is (not (mbql.u/datetime-arithmetics?
-              [:+ [:field-id 13] 3]))))
 
 (t/deftest ^:parallel expression-with-name-test
   (t/is (= [:+ 1 1]

@@ -1,4 +1,3 @@
-import React from "react";
 import PropTypes from "prop-types";
 import _ from "underscore";
 import { t } from "ttag";
@@ -6,18 +5,18 @@ import { t } from "ttag";
 import { PLUGIN_DASHBOARD_SUBSCRIPTION_PARAMETERS_SECTION_OVERRIDE } from "metabase/plugins";
 import { dashboardPulseIsValid } from "metabase/lib/pulse";
 
-import { CHANNEL_NOUN_PLURAL } from "./constants";
-import Icon from "metabase/components/Icon";
-import Heading from "./Heading";
+import { Icon } from "metabase/core/components/Icon";
 import Toggle from "metabase/core/components/Toggle";
-import CaveatMessage from "./CaveatMessage";
-import SchedulePicker from "metabase/components/SchedulePicker";
-import DefaultParametersSection from "./DefaultParametersSection";
+import SchedulePicker from "metabase/containers/SchedulePicker";
 import Sidebar from "metabase/dashboard/components/Sidebar";
 import EmailAttachmentPicker from "metabase/sharing/components/EmailAttachmentPicker";
-import DeleteSubscriptionAction from "./DeleteSubscriptionAction";
 import RecipientPicker from "metabase/pulse/components/RecipientPicker";
 import SendTestPulse from "metabase/components/SendTestPulse";
+import DeleteSubscriptionAction from "./DeleteSubscriptionAction";
+import DefaultParametersSection from "./DefaultParametersSection";
+import CaveatMessage from "./CaveatMessage";
+import Heading from "./Heading";
+import { CHANNEL_NOUN_PLURAL } from "./constants";
 
 function _AddEditEmailSidebar({
   pulse,
@@ -53,7 +52,7 @@ function _AddEditEmailSidebar({
         <Heading>{t`Email this dashboard`}</Heading>
       </div>
       <CaveatMessage />
-      <div className="my2 px4">
+      <div className="my2 px4 full-height flex flex-column">
         <div>
           <div className="text-bold mb1">{t`To:`}</div>
           <RecipientPicker
@@ -143,6 +142,9 @@ function _AddEditEmailSidebar({
             handleArchive={handleArchive}
           />
         )}
+        <div className="p2 mt-auto text-small text-medium">
+          {t`Charts in subscriptions may look slightly different from charts in dashboards.`}
+        </div>
       </div>
     </Sidebar>
   );

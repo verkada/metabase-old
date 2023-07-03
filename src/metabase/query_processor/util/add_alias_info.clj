@@ -1,12 +1,13 @@
 (ns metabase.query-processor.util.add-alias-info
-  "Walks query and adds generates appropriate aliases for every selected column; and adds extra keys to the
+  "Walks query and generates appropriate aliases for every selected column; and adds extra keys to the
   corresponding MBQL clauses with this information. Deduplicates aliases and calls [[metabase.driver/escape-alias]]
   with the generated aliases. Adds information about the aliases in source queries and joins that correspond to
   columns in the parent level.
 
   This code is currently opt-in, and is currently only used by SQL drivers ([[metabase.driver.sql.query-processor]]
-  manually calls [[add-alias-info]] inside of [[metabase.driver.sql.query-processor/mbql->native]]) but at some point
-  in the future this may become general QP middleware that can't be opted out of.
+  manually calls [[add-alias-info]] inside of [[metabase.driver.sql.query-processor/mbql->native]]
+  and [[metabase.driver.mongo.query-processor/mbql->native]]) but at some point in the future this may
+  become general QP middleware that can't be opted out of.
 
   [[add-alias-info]] adds some or all of the following keys to every `:field` clause, `:expression` reference, and
   `:aggregation` reference:
@@ -44,13 +45,14 @@
 
   If this clause is 'selected', this is the position the clause will appear in the results (i.e. the corresponding
   column index)."
-  (:require [clojure.string :as str]
-            [clojure.walk :as walk]
-            [metabase.driver :as driver]
-            [metabase.mbql.util :as mbql.u]
-            [metabase.query-processor.error-type :as qp.error-type]
-            [metabase.query-processor.store :as qp.store]
-            [metabase.util.i18n :refer [trs tru]]))
+  (:require
+   [clojure.walk :as walk]
+   [metabase.driver :as driver]
+   [metabase.mbql.util :as mbql.u]
+   [metabase.query-processor.error-type :as qp.error-type]
+   [metabase.query-processor.store :as qp.store]
+   [metabase.util :as u]
+   [metabase.util.i18n :refer [trs tru]]))
 
 (defn prefix-field-alias
   "Generate a field alias by applying `prefix` to `field-alias`. This is used for automatically-generated aliases for
@@ -69,7 +71,7 @@
   (let [unique-name-fn (mbql.u/unique-name-generator
                         ;; some databases treat aliases as case-insensitive so make sure the generated aliases are
                         ;; unique regardless of case
-                        :name-key-fn     str/lower-case
+                        :name-key-fn u/lower-case-en
                         ;; TODO -- we should probably limit the length somehow like we do in
                         ;; [[metabase.query-processor.middleware.add-implicit-joins/join-alias]], and also update this
                         ;; function and that one to append a short suffix if we are limited by length. See also
@@ -256,10 +258,22 @@
   (when-let [[_ _ {::keys [desired-alias]}] (matching-field-in-source-query inner-query field-clause)]
     desired-alias))
 
+(defmulti ^String field-reference
+  "Generate a reference for the field instance `field-inst` appropriate for the driver `driver`.
+  By default this is just the name of the field, but it can be more complicated, e.g., take
+  parent fields into account."
+  {:added "0.46.0", :arglists '([driver field-inst])}
+  driver/dispatch-on-initialized-driver
+  :hierarchy #'driver/hierarchy)
+
+(defmethod field-reference ::driver/driver
+  [_driver field-inst]
+  (:name field-inst))
+
 (defn- field-name
   "*Actual* name of a `:field` from the database or source query (for Field literals)."
   [_inner-query [_ id-or-name :as field-clause]]
-  (or (:name (field-instance field-clause))
+  (or (some->> field-clause field-instance (field-reference driver/*driver*))
       (when (string? id-or-name)
         id-or-name)))
 
@@ -289,9 +303,9 @@
     ;; suffix to escaped identifiers.)
     ;;
     ;; We'll have to look into this more in the future. For now, it seems to work for everything we try it with.
-    (and join-alias (not join-is-this-level?)) (prefix-field-alias join-alias field-name)
     (and join-is-this-level? alias-from-join)  alias-from-join
     alias-from-source-query                    alias-from-source-query
+    (and join-alias (not join-is-this-level?)) (prefix-field-alias join-alias field-name)
     :else                                      field-name))
 
 (defn- field-desired-alias

@@ -1,30 +1,37 @@
 (ns metabase.core
-  (:gen-class)
-  (:require [clojure.string :as str]
-            [clojure.tools.logging :as log]
-            [clojure.tools.trace :as trace]
-            [java-time :as t]
-            [metabase.config :as config]
-            [metabase.core.initialization-status :as init-status]
-            [metabase.db :as mdb]
-            metabase.driver.h2
-            metabase.driver.mysql
-            metabase.driver.postgres
-            [metabase.events :as events]
-            [metabase.logger :as mb.logger]
-            [metabase.models.user :refer [User]]
-            [metabase.plugins :as plugins]
-            [metabase.plugins.classloader :as classloader]
-            [metabase.public-settings :as public-settings]
-            [metabase.sample-data :as sample-data]
-            [metabase.server :as server]
-            [metabase.server.handler :as handler]
-            [metabase.setup :as setup]
-            [metabase.task :as task]
-            [metabase.troubleshooting :as troubleshooting]
-            [metabase.util :as u]
-            [metabase.util.i18n :refer [deferred-trs trs]]
-            [toucan.db :as db]))
+  (:require
+   [clojure.string :as str]
+   [clojure.tools.trace :as trace]
+   [java-time :as t]
+   [metabase.analytics.prometheus :as prometheus]
+   [metabase.config :as config]
+   [metabase.core.config-from-file :as config-from-file]
+   [metabase.core.initialization-status :as init-status]
+   [metabase.db :as mdb]
+   [metabase.driver.h2]
+   [metabase.driver.mysql]
+   [metabase.driver.postgres]
+   [metabase.events :as events]
+   [metabase.logger :as mb.logger]
+   [metabase.models.user :refer [User]]
+   [metabase.plugins :as plugins]
+   [metabase.plugins.classloader :as classloader]
+   [metabase.public-settings :as public-settings]
+   [metabase.public-settings.premium-features :refer [defenterprise]]
+   [metabase.sample-data :as sample-data]
+   [metabase.server :as server]
+   [metabase.server.handler :as handler]
+   [metabase.setup :as setup]
+   [metabase.task :as task]
+   [metabase.troubleshooting :as troubleshooting]
+   [metabase.util :as u]
+   [metabase.util.i18n :refer [deferred-trs trs]]
+   [metabase.util.log :as log]
+   [toucan2.core :as t2])
+  (:import
+   (java.lang.management ManagementFactory)))
+
+(set! *warn-on-reflection* true)
 
 (comment
   ;; Load up the drivers shipped as part of the main codebase, so they will show up in the list of available DB types
@@ -56,10 +63,11 @@
   []
   (let [hostname  (or (config/config-str :mb-jetty-host) "localhost")
         port      (config/config-int :mb-jetty-port)
-        setup-url (str "http://"
-                       (or hostname "localhost")
-                       (when-not (= 80 port) (str ":" port))
-                       "/setup/")]
+        site-url  (or (public-settings/site-url)
+                      (str "http://"
+                           hostname
+                           (when-not (= 80 port) (str ":" port))))
+        setup-url (str site-url "/setup/")]
     (log/info (u/format-color 'green
                               (str (deferred-trs "Please use the following URL to setup your Metabase installation:")
                                    "\n\n"
@@ -80,7 +88,13 @@
   ;; to a Shutdown hook of some sort instead of having here
   (task/stop-scheduler!)
   (server/stop-web-server!)
+  (prometheus/shutdown!)
   (log/info (trs "Metabase Shutdown COMPLETE")))
+
+(defenterprise ensure-audit-db-installed!
+  "OSS implementation of `audit-db/ensure-db-installed!`, which is an enterprise feature, so does nothing in the OSS
+  version."
+  metabase-enterprise.audit-db [] ::noop)
 
 (defn- init!*
   "General application initialization function which should be run once at application startup."
@@ -88,51 +102,54 @@
   (log/info (trs "Starting Metabase version {0} ..." config/mb-version-string))
   (log/info (trs "System info:\n {0}" (u/pprint-to-str (troubleshooting/system-info))))
   (init-status/set-progress! 0.1)
-
   ;; First of all, lets register a shutdown hook that will tidy things up for us on app exit
   (.addShutdownHook (Runtime/getRuntime) (Thread. ^Runnable destroy!))
   (init-status/set-progress! 0.2)
-
   ;; load any plugins as needed
   (plugins/load-plugins!)
   (init-status/set-progress! 0.3)
-
   ;; startup database.  validates connection & runs any necessary migrations
   (log/info (trs "Setting up and migrating Metabase DB. Please sit tight, this may take a minute..."))
   (mdb/setup-db!)
   (init-status/set-progress! 0.5)
-
+  ;; Set up Prometheus
+  (when (prometheus/prometheus-server-port)
+    (log/info (trs "Setting up prometheus metrics"))
+    (prometheus/setup!)
+    (init-status/set-progress! 0.6))
+  ;; initialize Metabase from an `config.yml` file if present (Enterprise Edition™ only)
+  (config-from-file/init-from-file-if-code-available!)
+  (init-status/set-progress! 0.65)
+  ;; Bootstrap the event system
+  (events/initialize-events!)
+  (init-status/set-progress! 0.7)
   ;; run a very quick check to see if we are doing a first time installation
   ;; the test we are using is if there is at least 1 User in the database
-  (let [new-install? (not (db/exists? User))]
-
-    ;; Bootstrap the event system
-    (events/initialize-events!)
-    (init-status/set-progress! 0.7)
-
-    ;; Now initialize the task runner
-    (task/init-scheduler!)
-    (init-status/set-progress! 0.8)
-
+  (let [new-install? (not (t2/exists? User))]
     (when new-install?
       (log/info (trs "Looks like this is a new installation ... preparing setup wizard"))
       ;; create setup token
       (create-setup-token-and-log-setup-url!)
       ;; publish install event
       (events/publish-event! :install {}))
-    (init-status/set-progress! 0.9)
-
+    (init-status/set-progress! 0.8)
     ;; deal with our sample database as needed
     (if new-install?
       ;; add the sample database DB for fresh installs
       (sample-data/add-sample-database!)
       ;; otherwise update if appropriate
-      (sample-data/update-sample-database-if-needed!)))
+      (sample-data/update-sample-database-if-needed!))
+    (init-status/set-progress! 0.9))
+
+  ;; TODO uncomment when audit v2 is ready
+  ; (ensure-audit-db-installed!)
 
   ;; start scheduler at end of init!
   (task/start-scheduler!)
   (init-status/set-complete!)
-  (log/info (trs "Metabase Initialization COMPLETE")))
+  (let [start-time (.getStartTime (ManagementFactory/getRuntimeMXBean))
+        duration   (- (System/currentTimeMillis) start-time)]
+    (log/info (trs "Metabase Initialization COMPLETE in {0}" (u/format-milliseconds duration)))))
 
 (defn init!
   "General application initialization function which should be run once at application startup. Calls `[[init!*]] and

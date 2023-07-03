@@ -1,33 +1,34 @@
 /* eslint-disable react/prop-types */
-import React from "react";
+import { Component } from "react";
 
 import { t, jt } from "ttag";
 
+import _ from "underscore";
+import cx from "classnames";
 import {
   getAccentColors,
   getStatusColorRanges,
 } from "metabase/lib/colors/groups";
 
 import Button from "metabase/core/components/Button";
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import Select, { Option } from "metabase/core/components/Select";
 import Radio from "metabase/core/components/Radio";
 import Toggle from "metabase/core/components/Toggle";
 import ColorRange from "metabase/core/components/ColorRange";
 import ColorSelector from "metabase/core/components/ColorSelector";
 import ColorRangeSelector from "metabase/core/components/ColorRangeSelector";
+import Input from "metabase/core/components/Input";
 
 import NumericInput from "metabase/components/NumericInput";
+
 import {
   SortableContainer,
   SortableElement,
 } from "metabase/components/sortable";
 
 import * as MetabaseAnalytics from "metabase/lib/analytics";
-import { isNumeric, isString } from "metabase/lib/schema_metadata";
-
-import _ from "underscore";
-import cx from "classnames";
+import { isNumeric, isString } from "metabase-lib/types/utils/isa";
 
 const NUMBER_OPERATOR_NAMES = {
   "<": t`is less than`,
@@ -83,22 +84,23 @@ const DEFAULTS_BY_TYPE = {
 // predicate for columns that can be formatted
 export const isFormattable = field => isNumeric(field) || isString(field);
 
-const INPUT_CLASSNAME = "AdminSelect input mt1 full";
+const INPUT_CLASSNAME = "mt1 full";
 
 const getValueForDescription = rule =>
   ["is-null", "not-null"].includes(rule.operator) ? "" : ` ${rule.value}`;
 
-export default class ChartSettingsTableFormatting extends React.Component {
+export default class ChartSettingsTableFormatting extends Component {
   state = {
     editingRule: null,
     editingRuleIsNew: null,
   };
   render() {
-    const { value, onChange, cols } = this.props;
+    const { value, onChange, cols, canHighlightRow } = this.props;
     const { editingRule, editingRuleIsNew } = this.state;
     if (editingRule !== null && value[editingRule]) {
       return (
         <RuleEditor
+          canHighlightRow={canHighlightRow}
           rule={value[editingRule]}
           cols={cols}
           isNew={editingRuleIsNew}
@@ -297,7 +299,15 @@ const RuleDescription = ({ rule }) => {
   );
 };
 
-const RuleEditor = ({ rule, cols, isNew, onChange, onDone, onRemove }) => {
+const RuleEditor = ({
+  rule,
+  cols,
+  isNew,
+  onChange,
+  onDone,
+  onRemove,
+  canHighlightRow = true,
+}) => {
   const selectedColumns = rule.columns.map(name => _.findWhere(cols, { name }));
   const isStringRule =
     selectedColumns.length > 0 && _.all(selectedColumns, isString);
@@ -363,16 +373,20 @@ const RuleEditor = ({ rule, cols, isNew, onChange, onDone, onRemove }) => {
           </Select>
           {hasOperand && isNumericRule ? (
             <NumericInput
+              data-testid="conditional-formatting-value-input"
               className={INPUT_CLASSNAME}
               type="number"
               value={rule.value}
               onChange={value => onChange({ ...rule, value })}
+              placeholder="0"
             />
           ) : hasOperand ? (
-            <input
+            <Input
+              data-testid="conditional-formatting-value-input"
               className={INPUT_CLASSNAME}
               value={rule.value}
               onChange={e => onChange({ ...rule, value: e.target.value })}
+              placeholder={t`Column value`}
             />
           ) : null}
           <h3 className="mt3 mb1">{t`…turn its background this color:`}</h3>
@@ -381,11 +395,16 @@ const RuleEditor = ({ rule, cols, isNew, onChange, onDone, onRemove }) => {
             colors={COLORS}
             onChange={color => onChange({ ...rule, color })}
           />
-          <h3 className="mt3 mb1">{t`Highlight the whole row`}</h3>
-          <Toggle
-            value={rule.highlight_row}
-            onChange={highlight_row => onChange({ ...rule, highlight_row })}
-          />
+          {canHighlightRow && (
+            <>
+              <h3 className="mt3 mb1">{t`Highlight the whole row`}</h3>
+
+              <Toggle
+                value={rule.highlight_row}
+                onChange={highlight_row => onChange({ ...rule, highlight_row })}
+              />
+            </>
+          )}
         </div>
       ) : rule.type === "range" ? (
         <div>

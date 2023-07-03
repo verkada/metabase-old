@@ -6,23 +6,41 @@ import {
   getNativePermission,
   getSchemasPermission,
 } from "metabase/admin/permissions/utils/graph";
-import { Group, GroupsPermissions } from "metabase-types/api";
-import { EntityId } from "../types";
-import Database from "metabase-lib/lib/metadata/Database";
+import type {
+  Group,
+  GroupsPermissions,
+  ConcreteTableId,
+} from "metabase-types/api";
+import type Database from "metabase-lib/metadata/Database";
+import type { EntityId } from "../types";
 
 export const getDefaultGroupHasHigherAccessText = (defaultGroup: Group) =>
   t`The "${defaultGroup.name}" group has a higher level of access than this, which will override this setting. You should limit or revoke the "${defaultGroup.name}" group's access to this item.`;
 
 // these are all the permission levels ordered by level of access
-const PERM_LEVELS = ["write", "read", "all", "controlled", "none", "block"];
+const PERM_LEVELS = [
+  "write",
+  "read",
+  "all",
+  "impersonated",
+  "controlled",
+  "none",
+  "block",
+];
 function hasGreaterPermissions(
   a: string,
   b: string,
   descendingPermissions = PERM_LEVELS,
 ) {
-  return (
-    descendingPermissions.indexOf(a) - descendingPermissions.indexOf(b) < 0
-  );
+  // Avoids scenario where the logic of the PERM_LEVELS ordering suggests that
+  // a default group permission of "none" would overrule "block".
+  if (a === "none" && b === "block") {
+    return false;
+  } else {
+    return (
+      descendingPermissions.indexOf(a) - descendingPermissions.indexOf(b) < 0
+    );
+  }
 }
 
 export function getPermissionWarning(
@@ -102,7 +120,9 @@ export function getRawQueryWarningModal(
   if (
     value === "write" &&
     getNativePermission(permissions, groupId, entityId) !== "write" &&
-    getSchemasPermission(permissions, groupId, entityId, "data") !== "all"
+    !["all", "impersonated"].includes(
+      getSchemasPermission(permissions, groupId, entityId, "data"),
+    )
   ) {
     return {
       title: t`Allow native query editing?`,
@@ -130,10 +150,10 @@ export function getRevokingAccessToAllTablesWarningModal(
     getNativePermission(permissions, groupId, entityId) !== "none"
   ) {
     // allTableEntityIds contains tables from all schemas
-    const allTableEntityIds = database.tables.map(table => ({
+    const allTableEntityIds = database.getTables().map(table => ({
       databaseId: table.db_id,
       schemaName: table.schema_name || "",
-      tableId: table.id,
+      tableId: table.id as ConcreteTableId,
     }));
 
     // Show the warning only if user tries to revoke access to the very last table of all schemas

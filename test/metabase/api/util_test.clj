@@ -1,7 +1,9 @@
 (ns metabase.api.util-test
   "Tests for /api/util"
-  (:require [clojure.test :refer :all]
-            [metabase.test :as mt]))
+  (:require
+   [clojure.test :refer :all]
+   [metabase.test :as mt]
+   [metabase.util.log :as log]))
 
 (deftest password-check-test
   (testing "POST /api/util/password_check"
@@ -16,6 +18,16 @@
     (testing "Should be a valid password"
       (is (= {:valid true}
              (mt/client :post 200 "util/password_check" {:password "something123"}))))))
+
+(deftest logs-test
+  (testing "Call includes recent logs (#24616)"
+    (mt/with-log-level :warn
+      (let [message "Sample warning message for test"]
+        (log/warn message)
+        (let [logs (mt/user-http-request :crowberto :get 200 "util/logs")]
+          (is (pos? (count logs)) "No logs returned from `util/logs`")
+          (is (some (comp #(re-find (re-pattern message) %) :msg) logs)
+              "Recent message not found in `util/logs`"))))))
 
 (deftest permissions-test
   (testing "/util/logs"

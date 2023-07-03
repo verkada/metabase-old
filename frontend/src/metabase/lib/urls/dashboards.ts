@@ -3,12 +3,9 @@ import slugg from "slugg";
 import { stringifyHashOptions } from "metabase/lib/browser";
 import MetabaseSettings from "metabase/lib/settings";
 
-import { CollectionId, Dashboard } from "metabase-types/api";
+import { Dashboard } from "metabase-types/api";
 
 import { appendSlug } from "./utils";
-
-export const newDashboard = (collectionId: CollectionId) =>
-  `collection/${collectionId}/new_dashboard`;
 
 type DashboardUrlBuilderOpts = {
   addCardWithId?: number;
@@ -26,7 +23,13 @@ export function dashboard(
 
   const path = appendSlug(dashboard.id, slugg(dashboard.name));
   const hash = stringifyHashOptions(options);
-  return hash ? `/dashboard/${path}#${hash}` : `/dashboard/${path}`;
+
+  // x-ray dashboards have ids as urls
+  if (typeof dashboard.id === "string") {
+    return hash ? `${dashboard.id}#${hash}` : dashboard.id;
+  } else {
+    return hash ? `/dashboard/${path}#${hash}` : `/dashboard/${path}`;
+  }
 }
 
 export function publicDashboard(uuid: string) {

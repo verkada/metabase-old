@@ -1,22 +1,22 @@
 /* eslint-disable react/prop-types */
-import React from "react";
+import { Component } from "react";
 import { t } from "ttag";
 import { connect } from "react-redux";
 import cx from "classnames";
 import _ from "underscore";
 
+import { dissoc } from "icepick";
 import title from "metabase/hoc/Title";
 import withToast from "metabase/hoc/Toast";
 import DashboardData from "metabase/dashboard/hoc/DashboardData";
-import { getValuePopulatedParameters } from "metabase/parameters/utils/parameter-values";
 
 import ActionButton from "metabase/components/ActionButton";
 import Button from "metabase/core/components/Button";
 import Card from "metabase/components/Card";
-import Icon from "metabase/components/Icon";
+import { Icon } from "metabase/core/components/Icon";
 import Filter from "metabase/query_builder/components/Filter";
 import Link from "metabase/core/components/Link";
-import Tooltip from "metabase/components/Tooltip";
+import Tooltip from "metabase/core/components/Tooltip";
 
 import { Dashboard } from "metabase/dashboard/containers/Dashboard";
 import SyncedParametersList from "metabase/parameters/components/SyncedParametersList/SyncedParametersList";
@@ -28,11 +28,12 @@ import Collections from "metabase/entities/collections";
 import Dashboards from "metabase/entities/dashboards";
 import * as Urls from "metabase/lib/urls";
 import * as MetabaseAnalytics from "metabase/lib/analytics";
-import * as Q from "metabase/lib/query/query";
-import Dimension from "metabase-lib/lib/Dimension";
 import { color } from "metabase/lib/colors";
+import { getValuePopulatedParameters } from "metabase-lib/parameters/utils/parameter-values";
+import * as Q from "metabase-lib/queries/utils/query";
+import { getFilterDimension } from "metabase-lib/queries/utils/dimension";
+import { isSegment } from "metabase-lib/queries/utils/filter";
 
-import { dissoc } from "icepick";
 import {
   ItemContent,
   ItemDescription,
@@ -56,7 +57,7 @@ const mapDispatchToProps = {
   invalidateCollections: Collections.actions.invalidateLists,
 };
 
-class AutomaticDashboardAppInner extends React.Component {
+class AutomaticDashboardAppInner extends Component {
   state = {
     savedDashboardId: null,
   };
@@ -214,16 +215,29 @@ const TransientFilters = ({ filter, metadata }) => (
   </div>
 );
 
-const TransientFilter = ({ filter, metadata }) => (
-  <div className="mr3">
-    <Icon size={12} name={getIconForFilter(filter, metadata)} className="mr1" />
-    <Filter filter={filter} metadata={metadata} />
-  </div>
-);
+const TransientFilter = ({ filter, metadata }) => {
+  const dimension = getFilterDimension(filter, metadata);
 
-const getIconForFilter = (filter, metadata) => {
-  const field = Dimension.parseMBQL(filter[1], metadata).field();
-  if (field.isDate()) {
+  return (
+    <div className="mr3">
+      <Icon
+        size={12}
+        name={getIconForFilter(filter, dimension)}
+        className="mr1"
+      />
+      <Filter filter={filter} metadata={metadata} />
+    </div>
+  );
+};
+
+const getIconForFilter = (filter, dimension) => {
+  const field = dimension?.field();
+
+  if (isSegment(filter)) {
+    return "star";
+  } else if (!field) {
+    return "label";
+  } else if (field.isDate()) {
     return "calendar";
   } else if (field.isLocation()) {
     return "location";
@@ -261,25 +275,22 @@ const SuggestionsList = ({ suggestions, section }) => (
         {suggestions[s].length > 0 &&
           suggestions[s].map((item, itemIndex) => (
             <Link
-              hover={{ color: color("brand") }}
               key={itemIndex}
               to={item.url}
-              className="block hover-parent hover--visibility"
+              className="mb1 block hover-parent hover--visibility text-brand-hover"
               data-metabase-event={`Auto Dashboard;Click Related;${s}`}
-              mb={1}
             >
-              <Card p={2} hoverable>
+              <Card className="p2" hoverable>
                 <ItemContent>
                   <Icon
                     name={RELATED_CONTENT[s].icon}
                     color={color("accent4")}
-                    mr={1}
-                    size={22}
+                    className="mr1"
                   />
                   <h4 className="text-wrap">{item.title}</h4>
                   <ItemDescription className="hover-child">
                     <Tooltip tooltip={item.description}>
-                      <Icon name="question" color={color("bg-dark")} />
+                      <Icon name="info_outline" color={color("bg-dark")} />
                     </Tooltip>
                   </ItemDescription>
                 </ItemContent>
