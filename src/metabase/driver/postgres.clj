@@ -702,11 +702,22 @@
         builder (-> (GenerateAuthenticationTokenRequest/builder)
                     (.credentialsProvider credentials-provider)
                     (.username username)
-                    (.port port)
+                    (.port (if (nil? port) 5432 port)) ; Postgres uses port 5432 by default
                     (.hostname hostname))
         token-request (.build ^GenerateAuthenticationTokenRequest$Builder builder)
         token (.generateAuthenticationToken utilities token-request)]
     token))
+
+(defn generate-rds-auth-token
+  "Get default credentials and build an RDS clinet. Use this client for auth token generation."
+  [hostname port region username]
+  (let [aws-region (Region/of region)
+        credentials-provider (DefaultCredentialsProvider/create)
+        builder (-> (RdsClient/builder)
+                    (.region aws-region)
+                    (.credentialsProvider credentials-provider))
+        rds-client (.build ^RdsClientBuilder builder)]
+    (get-auth-token credentials-provider rds-client hostname port username)))
 
 (defn get-iam-based-credentials
   [details-map db-identifier]
@@ -730,17 +741,6 @@
       (get pwd-ts-pair :password)
       (let [cur-pwd-ts (get-iam-based-credentials details-map db-identifier)]
         (get cur-pwd-ts :password)))))
-
-(defn generate-rds-auth-token
-  "Get default credentials and build an RDS clinet. Use this client for auth token generation."
-  [hostname port region username]
-  (let [aws-region (Region/of region)
-        credentials-provider (DefaultCredentialsProvider/create)
-        builder (-> (RdsClient/builder)
-                    (.region aws-region)
-                    (.credentialsProvider credentials-provider))
-        rds-client (.build ^RdsClientBuilder builder)]
-    (get-auth-token credentials-provider rds-client hostname port username)))
 
 (defmethod sql-jdbc.conn/connection-details->spec :postgres
   [_ {ssl? :ssl, :as details-map}]
