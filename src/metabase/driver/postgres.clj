@@ -35,7 +35,11 @@
   (:import
    (java.sql ResultSet ResultSetMetaData Time Types)
    (java.time LocalDateTime OffsetDateTime OffsetTime)
-   (java.util Date UUID)))
+   (java.util Date UUID)
+   (software.amazon.awssdk.services.rds.model GenerateAuthenticationTokenRequest GenerateAuthenticationTokenRequest$Builder)
+   (software.amazon.awssdk.auth.credentials DefaultCredentialsProvider)
+   (software.amazon.awssdk.regions Region)
+   (software.amazon.awssdk.services.rds RdsClient RdsClientBuilder)))
 
 (set! *warn-on-reflection* true)
 
@@ -128,6 +132,14 @@
     driver.common/default-dbname-details
     driver.common/default-user-details
     driver.common/default-password-details
+    {:name         "use-iam-connection"
+     :display-name (trs "Use IAM-based connection")
+     :type         :boolean
+     :default      false}
+    {:name         "region"
+     :display-name (trs "AWS Region")
+     :type         :string
+     :visible-if {"use-iam-connection" true}}
     driver.common/cloud-ip-address-info
     {:name "schema-filters"
      :type :schema-filters
@@ -678,6 +690,57 @@
   "Params to include in the JDBC connection spec to disable SSL."
   {:sslmode "disable"})
 
+(defonce ^:private ^{:doc "A map of DB auth tokens and generated time, keyed by Database `:id`."}
+  database-id->jdbc-password
+  (atom {}))
+
+(defn get-auth-token
+  "Get RDS auth token for a specific database with IAM-based user name."
+  [credentials-provider client hostname port username]
+  (let [utilities (.utilities client)
+        builder (-> (GenerateAuthenticationTokenRequest/builder)
+                    (.credentialsProvider credentials-provider)
+                    (.username username)
+                    (.port (if (nil? port) 5432 port)) ; Postgres uses port 5432 by default
+                    (.hostname hostname))
+        token-request (.build ^GenerateAuthenticationTokenRequest$Builder builder)
+        token (.generateAuthenticationToken utilities token-request)]
+    token))
+
+(defn generate-rds-auth-token
+  "Get default credentials and build an RDS clinet. Use this client for auth token generation."
+  [hostname port region username]
+  (let [aws-region (Region/of region)
+        credentials-provider (DefaultCredentialsProvider/create)
+        builder (-> (RdsClient/builder)
+                    (.region aws-region)
+                    (.credentialsProvider credentials-provider))
+        rds-client (.build ^RdsClientBuilder builder)]
+    (get-auth-token credentials-provider rds-client hostname port username)))
+
+(defn get-iam-based-credentials
+  [details-map db-identifier]
+  (let [token (generate-rds-auth-token (get details-map :host) (get details-map :port) (get details-map :region) (get details-map :user))
+        cur-ts (System/currentTimeMillis)
+        pwd-ts-pair {:password token, :timestamp cur-ts}]
+    (swap! database-id->jdbc-password assoc db-identifier pwd-ts-pair)
+    pwd-ts-pair))
+
+(defn fetch-iam-based-password
+  "Try fetching IAM-based password for database. If there's an existing non-expired one, extract its password. If no exisitng one or existign
+  has expired, re-generate the auth token."
+  [details-map]
+  (let [subname (mdb.spec/make-subname (get details-map :host) (or (get details-map :port) 5432) (get details-map :dbname))
+        db-identifier (str subname "/" (get details-map :user))
+        pwd-ts-pair (get @database-id->jdbc-password db-identifier)
+        cur-timestamp (System/currentTimeMillis)]
+    (if (and
+         (some? pwd-ts-pair)
+         (< (- cur-timestamp (get pwd-ts-pair :timestamp)) (* 12 60000)))
+      (get pwd-ts-pair :password)
+      (let [cur-pwd-ts (get-iam-based-credentials details-map db-identifier)]
+        (get cur-pwd-ts :password)))))
+
 (defmethod sql-jdbc.conn/connection-details->spec :postgres
   [_ {ssl? :ssl, :as details-map}]
   (let [props (-> details-map
@@ -685,6 +748,11 @@
                                   (if (string? port)
                                     (Integer/parseInt port)
                                     port)))
+                  ;; update :password with IAM-based auth token if :use-iam-connection is true
+                  (update :password (fn [password]
+                                      (if (true? (get details-map :use-iam-connection))
+                                        (fetch-iam-based-password details-map)
+                                        password)))
                   ;; remove :ssl in case it's false; DB will still try (& fail) to connect if the key is there
                   (dissoc :ssl))
         props (if ssl?
