@@ -60,7 +60,7 @@
                     (if (some? possible-override)
                       possible-override
                       (or (get @app-db-id->user-exists? (mdb.connection/unique-identifier))
-                          (let [exists? (db/exists? User)]
+                          (let [exists? (t2/exists? User)]
                             (swap! app-db-id->user-exists? assoc (mdb.connection/unique-identifier) exists?)
                             exists?))))))
   :doc        false)
